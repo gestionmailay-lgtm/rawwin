@@ -148,6 +148,33 @@ export default function SignupPage() {
                     <Input id="country" name="country" type="text" placeholder="France" defaultValue="France" required />
                   </div>
 
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">
+                        Modules souhaités
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Modules Selection */}
+                  <div className="grid gap-4">
+                    <div className="flex items-center space-x-2 rounded-md border p-4 hover:bg-accent transition-colors cursor-pointer">
+                      <input type="checkbox" id="mod-cereales" name="modules" value="cereales" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+                      <Label htmlFor="mod-cereales" className="flex-1 cursor-pointer font-medium">Céréales</Label>
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md border p-4 hover:bg-accent transition-colors cursor-pointer">
+                      <input type="checkbox" id="mod-serres" name="modules" value="serres" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+                      <Label htmlFor="mod-serres" className="flex-1 cursor-pointer font-medium">Serres</Label>
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md border p-4 hover:bg-accent transition-colors cursor-pointer">
+                      <input type="checkbox" id="mod-porc" name="modules" value="porc" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+                      <Label htmlFor="mod-porc" className="flex-1 cursor-pointer font-medium">Porc</Label>
+                    </div>
+                  </div>
+
                   {/* Submit button */}
                   <Button type="submit" className="w-full">
                     S'inscrire

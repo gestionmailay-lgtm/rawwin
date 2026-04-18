@@ -1,25 +1,32 @@
-import { Metadata } from "next"
+"use client"
+
+import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export const metadata: Metadata = {
-  title: "Connexion",
-  description: "Connectez-vous à votre compte",
-}
-
 export default function LoginPage() {
+  const [showPassword, setShowPassword] = useState(false)
+  const [errorMSG, setErrorMSG] = useState<string | null>(null)
+
+  const handleSubmit = async (formData: FormData) => {
+    setErrorMSG(null)
+    const { login } = await import("@/app/actions/auth")
+    const result = await login(formData)
+    
+    if (result?.error) {
+      setErrorMSG(result.error)
+    }
+  }
+
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10 bg-muted/40">
       <div className="w-full max-w-lg">
@@ -36,12 +43,20 @@ export default function LoginPage() {
           </div>
           <Card>
             <CardContent className="pt-6">
-              <form>
+              <form action={handleSubmit}>
                 <div className="flex flex-col gap-6">
+                  
+                  {errorMSG && (
+                    <div className="p-3 text-sm font-medium text-destructive-foreground bg-destructive/20 rounded-md">
+                      {errorMSG}
+                    </div>
+                  )}
+
                   <div className="grid gap-2">
                     <Label htmlFor="email">Email</Label>
                     <Input
                       id="email"
+                      name="email"
                       type="email"
                       placeholder="nom@exemple.com"
                       required
@@ -57,7 +72,22 @@ export default function LoginPage() {
                         Oublié ?
                       </Link>
                     </div>
-                    <Input id="password" type="password" required />
+                    <div className="relative">
+                      <Input 
+                        id="password" 
+                        name="password"
+                        type={showPassword ? "text" : "password"} 
+                        required 
+                      />
+                      <button 
+                        type="button" 
+                        tabIndex={-1}
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                   <Button type="submit" className="w-full">
                     Se connecter
@@ -75,7 +105,7 @@ export default function LoginPage() {
                   </div>
 
                   <div className="flex justify-center">
-                    <Button variant="outline" type="button" size="icon" className="rounded-full w-12 h-12">
+                    <Button variant="outline" type="button" size="icon" className="rounded-full w-12 h-12 hover:bg-muted transition-colors">
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
