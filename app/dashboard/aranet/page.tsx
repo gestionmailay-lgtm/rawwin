@@ -569,7 +569,17 @@ export default function AranetUnifiedDashboard() {
 
       setPrivaValues(valuesMap);
     } catch (err: any) {
-      console.error("fetchPrivaData error:", err);
+      const isQuotaError = err.message && (
+        err.message.toLowerCase().includes("quota") ||
+        err.message.toLowerCase().includes("volume") ||
+        err.message.toLowerCase().includes("429") ||
+        err.message.toLowerCase().includes("403")
+      );
+      if (isQuotaError) {
+        console.warn("fetchPrivaData rate limit:", err.message);
+      } else {
+        console.error("fetchPrivaData error:", err);
+      }
       setPrivaError(err.message || "Erreur de connexion");
     } finally {
       setPrivaLoading(false);
