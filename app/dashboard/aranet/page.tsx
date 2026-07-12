@@ -1209,7 +1209,7 @@ export default function AranetUnifiedDashboard() {
     return Object.keys(daysMap).map((dateStr, index) => {
       const rows = daysMap[dateStr];
       const audits: any[] = [];
-      let totalLoss = 0;
+      let lostPercent = 0;
       let score = 100;
       const physiologicalReasons: string[] = [];
       const actionPlans: string[] = [];
@@ -1240,7 +1240,7 @@ export default function AranetUnifiedDashboard() {
       const vpdKeys = selectedKeys.filter(k => k.toLowerCase().includes("vpd"));
       const rhKeys = selectedKeys.filter(k => (k.toLowerCase().includes("rh") || k.toLowerCase().includes("humidity") || k.toLowerCase().includes("hum_measured")) && !k.toLowerCase().includes("out"));
       const wcKeys = selectedKeys.filter(k => k.toLowerCase().includes("wc") || k.toLowerCase().includes("vwc"));
-      const radKeys = selectedKeys.filter(k => k.toLowerCase().includes("irr_out") || k.toLowerCase().includes("radiation") || k.toLowerCase().includes("solar"));
+      const radKeys = selectedKeys.filter(k => k.toLowerCase().includes("irr_out") || k.toLowerCase().includes("radiation") || k.toLowerCase().includes("solar") || k.toLowerCase().includes("rayonnement"));
       const windKeys = selectedKeys.filter(k => k.toLowerCase().includes("wind"));
 
       const tempAvg = tempKeys.length > 0 ? getAverage(tempKeys[0]) : null;
@@ -1255,8 +1255,7 @@ export default function AranetUnifiedDashboard() {
       if (tempAvg !== null && radAvg !== null) {
         const expectedTemp = 18.0 + (radAvg / 100.0) * 1.5;
         if (radAvg < 100 && tempAvg > 21.0) {
-          const loss = 0.06;
-          totalLoss += loss;
+          lostPercent += 15;
           score -= 15;
           audits.push({
             name: "Rapport Lumière / Température",
@@ -1271,8 +1270,7 @@ export default function AranetUnifiedDashboard() {
           physiologicalReasons.push("Déséquilibre Lumière/Température : Le faible rayonnement limite la photosynthèse. Maintenir une température moyenne élevée (>21°C) provoque une respiration excessive de la plante, épuisant ses réserves de sucres et affaiblissant l'apex (tête fine, baisse de vigueur).");
           actionPlans.push("Ajuster la consigne de chauffage moyenne 24h à la baisse sous faible ensoleillement (viser 18.5 - 19.5°C).");
         } else if (radAvg > 180 && tempAvg < 19.5) {
-          const loss = 0.04;
-          totalLoss += loss;
+          lostPercent += 10;
           score -= 10;
           audits.push({
             name: "Rapport Lumière / Température",
@@ -1309,8 +1307,7 @@ export default function AranetUnifiedDashboard() {
         if (dayStats && nightStats) {
           const dif = dayStats.avg - nightStats.avg;
           if (dif > 8.0) {
-            const loss = 0.05;
-            totalLoss += loss;
+            lostPercent += 12;
             score -= 12;
             audits.push({
               name: "Écart Jour/Nuit (DIF)",
@@ -1325,8 +1322,7 @@ export default function AranetUnifiedDashboard() {
             physiologicalReasons.push("DIF excessif : Un écart jour/nuit supérieur à 8°C étire anormalement les entrenœuds de la tige et affine la tête. Les fleurs s'affaiblissent, ce qui augmente le risque de coulure.");
             actionPlans.push("Rehausser légèrement la température minimale nocturne ou abaisser la consigne de ventilation de jour.");
           } else if (dif < 2.0) {
-            const loss = 0.03;
-            totalLoss += loss;
+            lostPercent += 8;
             score -= 8;
             audits.push({
               name: "Écart Jour/Nuit (DIF)",
@@ -1362,8 +1358,7 @@ export default function AranetUnifiedDashboard() {
         const nightVPD = getStatsForTimeRange(vpdKeys[0], 22, 5);
         if (nightVPD) {
           if (nightVPD.avg < 0.35) {
-            const loss = 0.05;
-            totalLoss += loss;
+            lostPercent += 15;
             score -= 15;
             audits.push({
               name: "VPD Nocturne (Pression Racinaire)",
@@ -1401,8 +1396,7 @@ export default function AranetUnifiedDashboard() {
         if (eveStats && morStats) {
           const dryBack = eveStats.avg - morStats.avg;
           if (dryBack < 6.0) {
-            const loss = 0.06;
-            totalLoss += loss;
+            lostPercent += 18;
             score -= 18;
             audits.push({
               name: "Ressuyage Nocturne (Dry-Back)",
@@ -1417,8 +1411,7 @@ export default function AranetUnifiedDashboard() {
             physiologicalReasons.push("Dry-back faible : Le substrat reste trop saturé en eau pendant la nuit. Les racines s'asphyxient temporairement par manque d'oxygène, favorisant le Pythium et affaiblissant la capacité d'absorption le lendemain matin.");
             actionPlans.push("Avancer l'heure d'arrêt de la dernière irrigation (viser 2h à 3h avant le coucher du soleil).");
           } else if (dryBack > 14.0) {
-            const loss = 0.05;
-            totalLoss += loss;
+            lostPercent += 15;
             score -= 15;
             audits.push({
               name: "Ressuyage Nocturne (Dry-Back)",
@@ -1465,6 +1458,15 @@ export default function AranetUnifiedDashboard() {
         }
       }
 
+      // Compute radiation sum in J/cm² (1 W/m² avg over 24h = 8.64 J/cm²/day)
+      const radiationSumJcm2 = radAvg !== null ? Math.round(radAvg * 8.64) : 1200;
+
+      // Yield potential under optimal conditions (1g of fruit per 100 J/cm² = 0.01 g/m² per J/cm²)
+      const yieldPotentialGrams = radiationSumJcm2 * 0.01;
+
+      // Lost potential in g/m² due to poor crop steering
+      const lostGainGrams = yieldPotentialGrams * (lostPercent / 100);
+
       if (physiologicalReasons.length === 0) {
         physiologicalReasons.push("L'équilibre thermique, le rapport lumière/température et la pression racinaire nocturne sont optimaux. La tomate exprime son plein potentiel végétatif et génératif.");
       }
@@ -1481,7 +1483,10 @@ export default function AranetUnifiedDashboard() {
         status: overallStatus,
         statusColor,
         overallScore: Math.max(10, score),
-        potentialGain: Number(totalLoss.toFixed(2)),
+        potentialGain: Number(lostGainGrams.toFixed(1)),
+        radiationSumJcm2,
+        yieldPotentialGrams: Number(yieldPotentialGrams.toFixed(1)),
+        lostPercent,
         audits,
         physiologicalExplanation: physiologicalReasons.join(" "),
         actionPlan: actionPlans
@@ -2751,8 +2756,8 @@ export default function AranetUnifiedDashboard() {
                   const alertDays = dynamicAgronomicData.filter(d => d.status === "Alerte Climat").length;
 
                   return (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
-                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6 w-full">
+                      <Card className="border-none shadow-md bg-background rounded-2xl md:col-span-1">
                         <CardContent className="p-5 flex items-center gap-4">
                           <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
                             <Award className="h-5 w-5" />
@@ -2767,20 +2772,22 @@ export default function AranetUnifiedDashboard() {
                         </CardContent>
                       </Card>
 
-                      <Card className="border-none shadow-md bg-gradient-to-br from-rose-500/5 to-transparent border border-rose-500/10 rounded-2xl">
+                      <Card className="border-none shadow-md bg-gradient-to-br from-rose-500/5 to-transparent border border-rose-500/10 rounded-2xl md:col-span-2">
                         <CardContent className="p-5 flex items-center gap-4">
                           <div className="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
                             <TrendingDown className="h-5 w-5 animate-pulse" />
                           </div>
                           <div>
-                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Perte de Gain Cumulé</p>
-                            <h3 className="text-xl font-black text-rose-600">-{totalLoss.toFixed(2)} €/m²</h3>
-                            <p className="text-[10px] text-rose-400 font-semibold mt-0.5">Perte technique/météo</p>
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider font-black">Potentiel de Gain Cumulé Perdu</p>
+                            <h3 className="text-xl font-black text-rose-600">-{totalLoss.toFixed(1)} g/m²</h3>
+                            <p className="text-[9px] text-rose-500 font-bold mt-1 leading-snug">
+                              L&apos;optimisation de la conduite, malgré le climat extérieur, aurait pu faire gagner {totalLoss.toFixed(1)} g/m² supplémentaire.
+                            </p>
                           </div>
                         </CardContent>
                       </Card>
 
-                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                      <Card className="border-none shadow-md bg-background rounded-2xl md:col-span-1">
                         <CardContent className="p-5 flex items-center gap-4">
                           <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl">
                             <CheckCircle2 className="h-5 w-5" />
@@ -2793,7 +2800,7 @@ export default function AranetUnifiedDashboard() {
                         </CardContent>
                       </Card>
 
-                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                      <Card className="border-none shadow-md bg-background rounded-2xl md:col-span-1">
                         <CardContent className="p-5 flex items-center gap-4">
                           <div className="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
                             <ShieldAlert className="h-5 w-5" />
@@ -2854,7 +2861,7 @@ export default function AranetUnifiedDashboard() {
                                   <div className={`text-xs font-black ${
                                     isActive ? "text-rose-300" : "text-rose-600"
                                   }`}>
-                                    -{d.potentialGain.toFixed(2)} €/m²
+                                    -{d.potentialGain.toFixed(1)} g/m²
                                   </div>
                                 </div>
                               </button>
@@ -2872,8 +2879,11 @@ export default function AranetUnifiedDashboard() {
                           <Card className="border-none shadow-md bg-background overflow-hidden rounded-2xl">
                             <CardHeader className="p-6 pb-3 border-b bg-muted/15 flex flex-row items-center justify-between">
                               <div>
-                                <CardTitle className="text-sm font-black uppercase tracking-tight">
-                                  Audit du {day.dateStr} — Score : {day.overallScore}/100
+                                <CardTitle className="text-sm font-black uppercase tracking-tight flex flex-col gap-1">
+                                  <span>Audit du {day.dateStr} — Score : {day.overallScore}/100</span>
+                                  <span className="text-[10px] text-muted-foreground font-bold tracking-wider uppercase mt-0.5">
+                                    Somme de Radiation : <span className="text-primary">{day.radiationSumJcm2} J/cm²</span> | Potentiel Optimal : <span className="text-emerald-600">{day.yieldPotentialGrams} g/m²</span> | Perte : <span className="text-rose-600">-{day.potentialGain} g/m²</span>
+                                  </span>
                                 </CardTitle>
                               </div>
                               <Badge className={`bg-${day.statusColor}-500/10 text-${day.statusColor}-500 border-${day.statusColor}-500/20 font-bold px-2 py-0.5 text-[10px]`}>
