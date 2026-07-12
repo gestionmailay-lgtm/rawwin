@@ -98,33 +98,43 @@ export default function ParametrageSerresPage() {
   useEffect(() => {
     const fetchData = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
 
-      // Load Imports
-      const { data: importData } = await supabase
-        .from('greenhouse_imports')
-        .select('*')
-        .eq('user_id', user.id)
+      let settingsData = null
+      if (user) {
+        // Load Imports
+        const { data: importData } = await supabase
+          .from('greenhouse_imports')
+          .select('*')
+          .eq('user_id', user.id)
 
-      if (importData) {
-        const importsMap: any = { resultat: null, gaz: null }
-        importData.forEach(imp => {
-          if (importsMap[imp.doc_type] !== undefined) {
-              importsMap[imp.doc_type] = { 
-                fileName: imp.file_name, 
-                date: imp.last_imported_at 
-              }
-          }
-        })
-        setLastImports(importsMap)
+        if (importData) {
+          const importsMap: any = { resultat: null, gaz: null }
+          importData.forEach(imp => {
+            if (importsMap[imp.doc_type] !== undefined) {
+                importsMap[imp.doc_type] = { 
+                  fileName: imp.file_name, 
+                  date: imp.last_imported_at 
+                }
+            }
+          })
+          setLastImports(importsMap)
+        }
+
+        // Load Saved Segments and Historical Gas
+        const { data } = await supabase
+          .from('greenhouse_settings')
+          .select('segments, historical_gas_total, gas_legumes_percents, expenses, gas_taxes, gas_total_mwh_doc')
+          .eq('user_id', user.id)
+          .single()
+        settingsData = data
+      } else {
+        const local = localStorage.getItem('greenhouse_settings_guest')
+        if (local) {
+          try {
+            settingsData = JSON.parse(local)
+          } catch (e) {}
+        }
       }
-
-      // Load Saved Segments and Historical Gas
-      const { data: settingsData } = await supabase
-        .from('greenhouse_settings')
-        .select('segments, historical_gas_total, gas_legumes_percents, expenses, gas_taxes, gas_total_mwh_doc')
-        .eq('user_id', user.id)
-        .single()
 
       if (settingsData?.segments) {
         setSegments(settingsData.segments)
@@ -164,7 +174,12 @@ export default function ParametrageSerresPage() {
     setError(null)
     try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) throw new Error("Vous n'êtes pas connecté. Veuillez vous reconnecter.")
+        if (!user) {
+            // Mode invité : simulation en mémoire
+            setSaveSuccess(true)
+            setIsDirty(false)
+            return true
+        }
 
         const { error: upsertError } = await supabase.from('greenhouse_settings').upsert({
             user_id: user.id,
@@ -198,7 +213,6 @@ export default function ParametrageSerresPage() {
   const handleFinalValidate = async () => {
     try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) throw new Error("Vous n'êtes pas connecté.")
 
         setAnalyzing(true)
         setAnalysisStep(0)
@@ -218,11 +232,11 @@ export default function ParametrageSerresPage() {
         const analysisResult = await runGeminiAnalysis("financial")
         
         // 3. SAUVEGARDE FINALE DE SÉCURITÉ (Bloquante avec les résultats de l'IA)
-        // On fusionne les résultats de l'IA avec les segments actuels pour être sûr de tout envoyer
-        if (analysisResult) {
+        // Uniquement pour les utilisateurs connectés
+        if (analysisResult && user) {
             const { error: finalSaveError } = await supabase.from('greenhouse_settings').upsert({
                 user_id: user.id,
-                segments: segments, // Les segments peuvent avoir été mis à jour par l'IA
+                segments: segments,
                 historical_gas_total: historicalGasTotal,
                 gas_legumes_percents: gasLegumesPercents,
                 expenses: analysisResult.expenses || expenses,
@@ -322,7 +336,6 @@ export default function ParametrageSerresPage() {
     
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("Utilisateur non connecté")
 
       setProgress(15)
       const combinedForm = new FormData()
@@ -334,7 +347,7 @@ export default function ParametrageSerresPage() {
         const file = files[type]
         if (file) {
             combinedForm.append("files", file)
-        } else if (lastImports[type]) {
+        } else if (lastImports[type] && user) {
             const { data: importData } = await supabase.from('greenhouse_imports').select('file_url').eq('user_id', user.id).eq('doc_type', type).single()
             if (importData?.file_url) {
                 const { data: fileBlob } = await supabase.storage.from('greenhouse-docs').download(importData.file_url)
@@ -896,31 +909,12 @@ export default function ParametrageSerresPage() {
                                                 <div className="flex flex-col gap-4">
                                                     <span>{row.culture}</span>
                                                     
-                                                    {/* NOUVEAU : SAISIE NUMÉRIQUE DANS L'ÉTAPE 2 */}
-                                    {(() => {
-                                    const totalGasTaxes = (gasTaxes.transport || 0) + (gasTaxes.ticgn || 0) + (gasTaxes.abonnement || 0) + (gasTaxes.cta || 0)
-                                    const extractedTaxRate = gasTotalMWhDoc > 0 ? totalGasTaxes / gasTotalMWhDoc : totalGasTaxes / 100 // Fallback si pas de MWh doc
-                                    return (
-                                        <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-100 group hover:border-primary/20 transition-all">
-                                            <div>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                                                    Taxes Extraites (IA)
-                                                    <span className="text-[10px] lowercase font-normal italic">(transport, ticgn, cta...)</span>
-                                                </p>
-                                                <p className="text-sm font-bold text-emerald-600">+{extractedTaxRate.toFixed(2)} €/MWh</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Base Doc</p>
-                                                <p className="text-xs font-bold text-slate-600">{gasTotalMWhDoc || "--"} MWh</p>
-                                            </div>
-                                        </div>
-                                    )
-                                })()}
+
                                                     <div className="flex flex-col gap-2">
                                                         <div className="flex items-center justify-between text-[10px] bg-slate-50 p-2 rounded-lg border border-slate-100">
                                                             <span className="text-slate-400 font-bold">PLANTATION</span>
                                                             <div className="flex items-center gap-1">
-                                                                <span className="font-bold">W</span>
+                                                                <span className="font-bold">Semaine</span>
                                                                 <input 
                                                                     type="number" min="1" max="52" value={(row.startGrowth ?? 0) + 1}
                                                                     onChange={(e) => updatePoint(row.id, 'startGrowth', (parseInt(e.target.value) || 1) - 1)}
@@ -931,7 +925,7 @@ export default function ParametrageSerresPage() {
                                                         <div className="flex items-center justify-between text-[10px] bg-emerald-50 p-2 rounded-lg border border-emerald-100">
                                                             <span className="text-emerald-600 font-bold text-xs">RÉCOLTE</span>
                                                             <div className="flex items-center gap-1">
-                                                                <span className="font-bold">W</span>
+                                                                <span className="font-bold">Semaine</span>
                                                                 <input 
                                                                     type="number" min="1" max="52" value={(row.startHarvest ?? 0) + 1}
                                                                     onChange={(e) => updatePoint(row.id, 'startHarvest', (parseInt(e.target.value) || 1) - 1)}
@@ -942,7 +936,7 @@ export default function ParametrageSerresPage() {
                                                         <div className="flex items-center justify-between text-[10px] bg-slate-50 p-2 rounded-lg border border-slate-100">
                                                             <span className="text-slate-400 font-bold">FIN/ARRAC.</span>
                                                             <div className="flex items-center gap-1">
-                                                                <span className="font-bold">W</span>
+                                                                <span className="font-bold">Semaine</span>
                                                                 <input 
                                                                     type="number" min="1" max="52" value={(row.endHarvest ?? 0) + 1}
                                                                     onChange={(e) => updatePoint(row.id, 'endHarvest', (parseInt(e.target.value) || 1) - 1)}

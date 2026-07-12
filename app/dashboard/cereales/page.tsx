@@ -1,150 +1,114 @@
 import { Metadata } from "next"
-import Image from "next/image"
 import Link from "next/link"
-import { ArrowLeft, ShoppingCart, TrendingUp, Droplets, Wheat, Fuel } from "lucide-react"
-
+import { ArrowRight, BrainCircuit, Activity, Wheat, ShieldCheck, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { BacktestView } from "@/components/modules/cereales/backtest-view"
 
 export const metadata: Metadata = {
-  title: "Module Céréales - Rawwin",
-  description: "Découvrez notre accompagnement pour les exploitations céréalières.",
+  title: "Module Céréales - Couverture MATIF",
+  description: "Backtesting de l'Agent IA Raw'win sur les marchés Blé, Colza et GNR.",
 }
 
 export default function CerealesModulePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Header Héro avec image de fond */}
-      <div className="relative h-[40vh] w-full">
-        {/* Lien retour en haut à gauche */}
-        <div className="absolute top-4 left-4 z-10 md:top-6 md:left-6">
-          <Link
-            href="/dashboard"
-            className="group flex items-center gap-2 px-4 py-2 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full text-sm font-medium text-white transition-all"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-            Retour au tableau de bord
-          </Link>
-        </div>
-
-        <Image
-          src="/cereales.jpg"
-          alt="Champ de blé avec tracteur et moissonneuse"
-          fill
-          className="object-cover object-center"
-          priority
-        />
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white mb-4">
-            Module Céréales
+    <main className="flex-1 min-h-screen bg-slate-50/50 pb-24 animate-in fade-in duration-700">
+      {/* HERO SECTION */}
+      <div className="relative overflow-hidden bg-white border-b border-slate-100">
+        <div className="absolute inset-0 bg-[url('/noise.png')] opacity-[0.02] mix-blend-overlay"></div>
+        <div className="absolute top-0 right-0 -mr-32 -mt-32 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-3xl filter pointer-events-none"></div>
+        
+        <div className="container mx-auto px-6 md:px-12 pt-16 pb-20 relative z-10 max-w-6xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-100 text-amber-700 text-sm font-bold tracking-wide uppercase mb-6">
+            <Wheat className="w-4 h-4" />
+            <span>Marchés MATIF & Énergies</span>
+          </div>
+          
+          <h1 className="text-5xl md:text-6xl font-black text-slate-900 tracking-tighter mb-6 leading-tight">
+            Performances Historiques <br /> 
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-yellow-500">Agent IA Raw'win</span>
           </h1>
-          <p className="max-w-[800px] text-lg text-white/90">
-            Maximisez la rentabilité de vos cultures céréalières grâce à notre expertise et notre connaissance des marchés financiers qui gravitent autour de votre activité.
+          
+          <p className="text-xl text-slate-600 font-medium max-w-3xl leading-relaxed mb-10">
+            Protégez vos marges sur le Blé et le Colza, et sécurisez vos achats de GNR. Nos algorithmes analysent 10 ans de données historiques pour déclencher les meilleures fenêtres d'achat et de vente.
           </p>
+          
+          <div className="flex gap-4">
+            <Button asChild size="lg" className="rounded-full px-8 bg-amber-600 hover:bg-amber-700 h-14 text-base font-bold shadow-xl shadow-amber-600/20">
+              <Link href="/dashboard/cereales/parametrage">
+                Lancer la Simulation Déclarative
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 
-      <main className="flex-1 container mx-auto p-6 md:p-12 lg:p-16 max-w-5xl">
-
-        <div className="space-y-8">
-          <section>
-            <h2 className="text-3xl font-semibold mb-4 text-foreground">Une expertise dédiée aux grandes cultures</h2>
-            <p className="text-muted-foreground leading-relaxed text-lg">
-              La rentabilité de vos parcelles dépend de multiples facteurs. Notre <strong>Module Céréales</strong> vous accompagne dans tous vos prises de décisions qui impactent votre charges opérationnelles majeures et vos ventes, la raison d'être de votre entreprise.
-
-            </p>
-          </section>
-
-          <section>
-            <h3 className="text-2xl font-semibold mb-4 text-foreground">Un suivi de la mise en place de la culture au résultat financier généré</h3>
-            <ul className="list-disc pl-6 text-muted-foreground space-y-2 text-lg">
-              <li>Analyse financière de vos coûts de production par segment.</li>
-              <li>Déclinaison de votre exposition aux marchés .</li>
-              <li>Mise en place de stratégie de couverture en lien avec vos coûts, votre exploitation et votre volonté de revenus personnels.</li>
-            </ul>
-          </section>
-
-          <section className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Achats */}
-            <div className="bg-card text-card-foreground p-6 md:p-8 rounded-3xl shadow-lg border border-border/50">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-4 bg-red-100 dark:bg-red-900/30 rounded-2xl text-red-600 dark:text-red-400">
-                  <ShoppingCart className="h-7 w-7" />
-                </div>
-                <h3 className="text-2xl font-semibold">Gérer vos Achats</h3>
-              </div>
-              <p className="text-muted-foreground mb-6 text-lg">
-                Suivons et anticipons les coûts de vos approvisionnements essentiels pour maîtriser vos marges tout au long de la saison.
-              </p>
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3">
-                  <div className="mt-1 bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
-                    <Droplets className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <strong className="block text-foreground">Engrais</strong>
-                    <span className="text-muted-foreground">Optimisons vos commandes d'intrants au meilleur prix.</span>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="mt-1 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-lg">
-                    <Fuel className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div>
-                    <strong className="block text-foreground">Gazole non routier (GNR)</strong>
-                    <span className="text-muted-foreground">Suivons la volatilité des prix de l'énergie et lissons vos dépenses.</span>
-                  </div>
-                </li>
-              </ul>
-            </div>
-
-            {/* Ventes */}
-            <div className="bg-card text-card-foreground p-6 md:p-8 rounded-3xl shadow-lg border border-border/50">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-4 bg-green-100 dark:bg-green-900/30 rounded-2xl text-green-600 dark:text-green-400">
-                  <TrendingUp className="h-7 w-7" />
-                </div>
-                <h3 className="text-2xl font-semibold">Gérer vos Ventes</h3>
-              </div>
-              <p className="text-muted-foreground mb-6 text-lg">
-                Valorisons votre production agricole en suivant de près les cours des marchés financiers et des matières premières.
-              </p>
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3">
-                  <div className="mt-1 bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded-lg">
-                    <Wheat className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                  </div>
-                  <div>
-                    <strong className="block text-foreground">Céréales</strong>
-                    <span className="text-muted-foreground">Blé, orge, maïs - prenons position et vendons au meilleur moment.</span>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="mt-1 bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-lg flex items-center justify-center">
-                    <div className="h-5 w-5 rounded-full border-[3px] border-emerald-600 dark:border-emerald-400" />
-                  </div>
-                  <div>
-                    <strong className="block text-foreground">Oléoprotéagineux</strong>
-                    <span className="text-muted-foreground">Colza, tournesol, pois - surveillons les tendances du marché mondial pour prendre les bonnes décisions.</span>
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </section>
-        </div>
-
-        <div className="mt-12 pt-8 border-t flex flex-col sm:flex-row items-center justify-between gap-6">
+      {/* BACKTESTING SECTION */}
+      <div className="container mx-auto px-6 md:px-12 mt-16 max-w-6xl">
+        <div className="mb-12 flex items-center justify-between">
           <div>
-            <h4 className="text-xl font-medium text-foreground mb-1">Besoin d'aide sur ce module ?</h4>
-            <p className="text-muted-foreground">Contactez votre conseiller dédié.</p>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-4">Backtesting sur 10 ans (2015 - 2025)</h2>
+            <p className="text-slate-500 font-medium text-lg">Comparaison de la marge nette entre un achat "Spot" de GNR et un achat couvert par l'IA.</p>
           </div>
-          <Button asChild size="lg" className="rounded-xl px-8 w-full sm:w-auto">
-            <Link href="/dashboard">
-              Retour au Dashboard
-            </Link>
-          </Button>
+          <div className="hidden md:flex p-4 bg-white rounded-2xl shadow-sm border border-slate-100 items-center gap-4">
+             <div className="p-3 bg-green-100 text-green-700 rounded-full">
+               <ShieldCheck className="w-6 h-6" />
+             </div>
+             <div>
+               <p className="text-sm text-slate-500 font-medium">Gain moyen sur marge nette</p>
+               <p className="text-2xl font-black text-slate-900">+18.5% / an</p>
+             </div>
+          </div>
         </div>
-      </main>
-    </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Main Chart Card & Table */}
+          <BacktestView />
+
+          {/* Stats Cards */}
+          <div className="space-y-6">
+            <Card className="border-none shadow-xl shadow-slate-200/50 rounded-[2rem] bg-amber-600 text-white overflow-hidden relative">
+              <div className="absolute -right-6 -top-6 opacity-10">
+                <BrainCircuit className="w-32 h-32" />
+              </div>
+              <CardContent className="p-8 relative z-10">
+                <h3 className="text-amber-100 font-bold mb-1">Volatilité Absorbée</h3>
+                <div className="text-5xl font-black mb-4">78%</div>
+                <p className="text-sm text-amber-50 leading-relaxed font-medium">
+                  De la volatilité des cours du GNR et du Blé est absorbée par les prises de positions anticipées de l'algorithme.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-xl shadow-slate-200/50 rounded-[2rem] bg-white">
+              <CardContent className="p-8">
+                <h3 className="text-slate-900 font-bold mb-6 text-lg">Principe du Conseil Raw'win</h3>
+                <ul className="space-y-4">
+                  <li className="flex gap-3 items-start">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                    <span className="text-sm font-medium text-slate-600">Déclarez vos surfaces et volumes cibles annuels.</span>
+                  </li>
+                  <li className="flex gap-3 items-start">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                    <span className="text-sm font-medium text-slate-600">Nos algorithmes simulent vos coûts et vos prix d'équilibre.</span>
+                  </li>
+                  <li className="flex gap-3 items-start">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                    <span className="text-sm font-medium text-slate-600">Appliquez des stratégies de couverture à terme et visualisez votre nouvelle marge.</span>
+                  </li>
+                </ul>
+                <Button asChild className="w-full mt-8 bg-slate-900 text-white hover:bg-slate-800 rounded-xl">
+                  <Link href="/dashboard/cereales/parametrage">Commencer la simulation</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+        </div>
+      </div>
+      
+    </main>
   )
 }

@@ -69,13 +69,24 @@ export default function CoutProductionSerresPage() {
             try {
                 setLoading(true)
                 const { data: { user } } = await supabase.auth.getUser()
-                if (!user || !isMounted) return
+                if (!isMounted) return
 
-                const { data: settings } = await supabase
-                    .from('greenhouse_settings')
-                    .select('*, gas_total_mwh_doc')
-                    .eq('user_id', user.id)
-                    .single()
+                let settings = null
+                if (user) {
+                    const { data } = await supabase
+                        .from('greenhouse_settings')
+                        .select('*, gas_total_mwh_doc')
+                        .eq('user_id', user.id)
+                        .single()
+                    settings = data
+                } else {
+                    const local = localStorage.getItem('greenhouse_settings_guest')
+                    if (local) {
+                        try {
+                            settings = JSON.parse(local)
+                        } catch (e) {}
+                    }
+                }
 
                 if (settings && isMounted) {
                     setSegments(settings.segments || [])
@@ -115,7 +126,21 @@ export default function CoutProductionSerresPage() {
         setSaveSuccess(false)
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
+            if (!user) {
+                // Mode invité : simulation en mémoire + localStorage
+                const local = localStorage.getItem('greenhouse_settings_guest')
+                let guestData: any = {}
+                if (local) {
+                    try { guestData = JSON.parse(local) } catch(e){}
+                }
+                guestData.labor_rate = laborRate
+                guestData.gas_molecule_price = gasMoleculePrice
+                guestData.segment_labor_h_ha = segmentLaborHHa
+                localStorage.setItem('greenhouse_settings_guest', JSON.stringify(guestData))
+                setSaveSuccess(true)
+                setTimeout(() => setSaveSuccess(false), 3000)
+                return
+            }
 
             await supabase.from('greenhouse_settings').upsert({
                 user_id: user.id,

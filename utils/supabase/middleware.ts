@@ -31,10 +31,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protection du dashboard
+  // Protection du dashboard (exclut le module serres et aranet pour permettre l'accès anonyme)
   if (
     !user &&
-    request.nextUrl.pathname.startsWith("/dashboard")
+    request.nextUrl.pathname.startsWith("/dashboard") &&
+    !request.nextUrl.pathname.startsWith("/dashboard/serres") &&
+    !request.nextUrl.pathname.startsWith("/dashboard/aranet")
   ) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
