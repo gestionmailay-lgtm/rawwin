@@ -531,14 +531,15 @@ export default function AranetUnifiedDashboard() {
       const valuesMap: Record<string, { value: number; time: string; unit: string }> = {};
       
       keyMetrics.forEach(m => {
-        const matchSeries = series.find((s: any) => s.variableId === m.variableId);
-        if (matchSeries && matchSeries.values && matchSeries.values.length > 0) {
-          const nonNullValues = matchSeries.values.filter((v: any) => v.value !== null && v.value !== undefined);
+        const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
+        if (matchSeries && matchSeries.measurements && matchSeries.measurements.length > 0) {
+          const nonNullValues = matchSeries.measurements.filter((v: any) => v.value !== null && v.value !== undefined);
           if (nonNullValues.length > 0) {
             const latest = nonNullValues[nonNullValues.length - 1];
+            const parsedVal = parseFloat(latest.value);
             valuesMap[m.key] = {
-              value: Number(latest.value.toFixed(2)),
-              time: new Date(latest.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              value: Number(parsedVal.toFixed(2)),
+              time: new Date(latest.timestampUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               unit: m.unit
             };
           }
@@ -887,10 +888,10 @@ export default function AranetUnifiedDashboard() {
 
           privaResults = privaKeys.map(key => {
             const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
-            const matchSeries = series.find((s: any) => s.variableId === m.variableId);
-            const readings = matchSeries && matchSeries.values ? matchSeries.values.map((v: any) => ({
-              time: v.time,
-              value: v.value
+            const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
+            const readings = matchSeries && matchSeries.measurements ? matchSeries.measurements.map((v: any) => ({
+              time: v.timestampUtc,
+              value: parseFloat(v.value)
             })) : [];
 
             return {
