@@ -853,17 +853,25 @@ export default function AranetUnifiedDashboard() {
         });
 
         // Ensure we cap the end date to avoid today midnight 403 restriction
+        let adjustedStart = startDateTime;
         let adjustedEnd = endDateTime;
-        const now = new Date();
-        if (adjustedEnd.getTime() >= now.getTime()) {
-          adjustedEnd = new Date(now.getTime() - 3600 * 1000); // 1 hour ago
+
+        const todayMidnight = new Date();
+        todayMidnight.setUTCHours(0, 0, 0, 0);
+        const maxEndAllowed = new Date(todayMidnight.getTime() - 60000); // 1 minute before today midnight UTC
+
+        if (adjustedEnd.getTime() > maxEndAllowed.getTime()) {
+          adjustedEnd = maxEndAllowed;
+        }
+        if (adjustedStart.getTime() >= adjustedEnd.getTime()) {
+          adjustedStart = new Date(adjustedEnd.getTime() - 24 * 3600 * 1000);
         }
 
         const valRes = await fetch("/api/priva", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            startTime: startDateTime.toISOString(),
+            startTime: adjustedStart.toISOString(),
             endTime: adjustedEnd.toISOString(),
             datapoints: privaMetricsToQuery
           })
