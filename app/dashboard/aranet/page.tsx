@@ -475,6 +475,7 @@ export default function AranetUnifiedDashboard() {
   const [privaError, setPrivaError] = useState<string | null>(null);
   const [privaChartError, setPrivaChartError] = useState<string | null>(null);
   const [privaSearch, setPrivaSearch] = useState("");
+  const [selectedCompartment, setSelectedCompartment] = useState<string>("1");
 
   const fetchPrivaData = async () => {
     setPrivaLoading(true);
@@ -1107,8 +1108,15 @@ export default function AranetUnifiedDashboard() {
   }, [chartData]);
 
   const visibleChartKeys = useMemo(() => {
-    return selectedKeys.filter((k) => !hiddenKeysOnChart.includes(k));
-  }, [selectedKeys, hiddenKeysOnChart]);
+    return selectedKeys.filter((k) => {
+      if (hiddenKeysOnChart.includes(k)) return false;
+      const m = PLOTTABLE_METRICS.find(item => item.key === k);
+      if (m && m.isPriva && m.category.includes("Compartiment")) {
+        return m.category === `Priva - Compartiment ${selectedCompartment}`;
+      }
+      return true;
+    });
+  }, [selectedKeys, hiddenKeysOnChart, selectedCompartment]);
 
   // Group active sensors into shared axes by unit & side
   const activeYAxes = useMemo(() => {
@@ -1191,9 +1199,28 @@ export default function AranetUnifiedDashboard() {
     return null;
   };
 
-  // Group metrics by visibility
-  const visibleMetrics = PLOTTABLE_METRICS.filter(m => selectedKeys.includes(m.key));
-  const hiddenMetrics = PLOTTABLE_METRICS.filter(m => !selectedKeys.includes(m.key));
+  // Group metrics by visibility (filtered by active compartment)
+  const visibleMetrics = PLOTTABLE_METRICS.filter(m => {
+    if (!selectedKeys.includes(m.key)) return false;
+    // Aranet only exists in Compartment 1
+    if (!m.isPriva && selectedCompartment !== "1") return false;
+    // Priva compartment metrics must match selectedCompartment
+    if (m.isPriva && m.category.includes("Compartiment")) {
+      return m.category === `Priva - Compartiment ${selectedCompartment}`;
+    }
+    return true;
+  });
+
+  const hiddenMetrics = PLOTTABLE_METRICS.filter(m => {
+    if (selectedKeys.includes(m.key)) return false;
+    // Aranet only exists in Compartment 1
+    if (!m.isPriva && selectedCompartment !== "1") return false;
+    // Priva compartment metrics must match selectedCompartment
+    if (m.isPriva && m.category.includes("Compartiment")) {
+      return m.category === `Priva - Compartiment ${selectedCompartment}`;
+    }
+    return true;
+  });
 
   // Helper function to render a sensor configuration item in the sidebar
   const renderSensorItem = (m: any) => {
@@ -1423,6 +1450,23 @@ export default function AranetUnifiedDashboard() {
               Ordinateur Climatique
             </button>
           </div>
+
+          {/* Compartment Selection Dropdown */}
+          <div className="flex items-center gap-1.5 bg-muted/40 border border-muted/20 px-2 py-0.5 rounded-xl h-8">
+            <span className="text-[9px] font-black uppercase text-muted-foreground">Compartiment :</span>
+            <select
+              value={selectedCompartment}
+              onChange={(e) => setSelectedCompartment(e.target.value)}
+              className="text-[10px] font-bold bg-transparent focus:outline-none cursor-pointer h-full"
+            >
+              <option value="1">Compartiment 1 (Aranet + Priva)</option>
+              <option value="2">Compartiment 2 (Priva)</option>
+              <option value="3">Compartiment 3 (Priva)</option>
+              <option value="4">Compartiment 4 (Priva)</option>
+              <option value="5">Compartiment 5 (Priva)</option>
+              <option value="6">Compartiment 6 (Priva)</option>
+            </select>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
@@ -1647,8 +1691,9 @@ export default function AranetUnifiedDashboard() {
                                   {/* lines mapping */}
                                   {visibleChartKeys.flatMap(key => {
                                     const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
-                                    const config = metricConfigs[key] || { axis: "left" };
-                                    const unitName = m.units.find(u => u.id === config.unit)?.name || "";
+                                    const config = metricConfigs[key] || {};
+                                    const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
+                                    const unitName = unitObj ? unitObj.name : "";
                                     const sensorColor = config.color || m.color;
                                     const isSmooth = config.smooth === true || config.smooth === "true";
 
