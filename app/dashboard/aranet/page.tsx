@@ -1193,7 +1193,7 @@ export default function AranetUnifiedDashboard() {
     return Object.values(bins).sort((a: any, b: any) => a.time - b.time);
   }, [rawDataMap, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, apiDaysRequested, zoomTimeRange]);
 
-  // Dynamic Agronomic analysis based on mapped chart data to calculate loss of cumulative gain
+  // Dynamic Advanced Agronomic analysis based on mapped chart data to calculate loss of cumulative gain
   const dynamicAgronomicData = useMemo(() => {
     if (chartData.length === 0) return [];
     
@@ -1214,253 +1214,280 @@ export default function AranetUnifiedDashboard() {
       const physiologicalReasons: string[] = [];
       const actionPlans: string[] = [];
 
+      // Averages and stats helpers
       const getAverage = (key: string) => {
         const valid = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key]));
         if (valid.length === 0) return null;
         return valid.reduce((sum, r) => sum + r[key], 0) / valid.length;
       };
 
-      // 1. VPD Audit
-      const vpdKeys = selectedKeys.filter(k => k.toLowerCase().includes("vpd"));
-      if (vpdKeys.length > 0) {
-        const vpdAvg = getAverage(vpdKeys[0]);
-        if (vpdAvg !== null) {
-          if (vpdAvg < 0.8) {
-            const loss = 0.05;
-            totalLoss += loss;
-            score -= 15;
-            audits.push({
-              name: "Déficit de Pression de Vapeur (VPD)",
-              applied: Number(vpdAvg.toFixed(2)),
-              targetMin: 0.8,
-              targetMax: 1.2,
-              unit: "kPa",
-              status: "low",
-              impact: `VPD trop bas (${vpdAvg.toFixed(2)} kPa). Transpiration ralentie.`,
-              origin: "Technique (Ventilation / Chauffage insuffisant)"
-            });
-            physiologicalReasons.push("Un VPD inférieur à 0.8 kPa indique un air trop humide. La plante réduit sa transpiration racinaire, ce qui limite le transport passif du calcium et induit des carences.");
-            actionPlans.push("Ouvrir légèrement les ouvrants pour évacuer l'humidité accumulée.");
-          } else if (vpdAvg > 1.2) {
-            const loss = 0.07;
-            totalLoss += loss;
-            score -= 20;
-            audits.push({
-              name: "Déficit de Pression de Vapeur (VPD)",
-              applied: Number(vpdAvg.toFixed(2)),
-              targetMin: 0.8,
-              targetMax: 1.2,
-              unit: "kPa",
-              status: "high",
-              impact: `VPD élevé (${vpdAvg.toFixed(2)} kPa). Stress hydrique foliaire.`,
-              origin: "Environnement (Vent extérieur sec ou fort ensoleillement)"
-            });
-            physiologicalReasons.push("Un VPD supérieur à 1.2 kPa assèche les feuilles. Pour survivre, les tomates ferment partiellement leurs stomates, ce qui stoppe l'entrée de CO2 et bloque la photosynthèse.");
-            actionPlans.push("Activer les brumisateurs ou le cooling de la serre.");
-          } else {
-            audits.push({
-              name: "Déficit de Pression de Vapeur (VPD)",
-              applied: Number(vpdAvg.toFixed(2)),
-              targetMin: 0.8,
-              targetMax: 1.2,
-              unit: "kPa",
-              status: "optimal",
-              impact: "VPD optimal. Excellente activité stomatique.",
-              origin: "Optimal"
-            });
-          }
-        }
-      } else {
-        audits.push({ name: "VPD (Non sélectionné)", applied: null, status: "missing", impact: "Sélectionnez le VPD dans l'onglet 'Sélection des données' pour l'inclure dans l'audit.", origin: "-" });
-      }
+      const getStatsForTimeRange = (key: string, startHour: number, endHour: number) => {
+        const valid = rows.filter(r => {
+          if (r[key] === undefined || r[key] === null || isNaN(r[key])) return false;
+          const d = new Date(r.time);
+          const hr = d.getHours();
+          return hr >= startHour && hr < endHour;
+        });
+        if (valid.length === 0) return null;
+        const avg = valid.reduce((sum, r) => sum + r[key], 0) / valid.length;
+        const values = valid.map(r => r[key]);
+        return { avg, max: Math.max(...values), min: Math.min(...values) };
+      };
 
-      // 2. Température Audit
+      // Extract basic averages
       const tempKeys = selectedKeys.filter(k => k.toLowerCase().includes("temp") && !k.toLowerCase().includes("out") && !k.toLowerCase().includes("target") && !k.toLowerCase().includes("water"));
       const tempOutKeys = selectedKeys.filter(k => k.toLowerCase().includes("temp") && (k.toLowerCase().includes("out") || k.toLowerCase().includes("ext")));
+      const vpdKeys = selectedKeys.filter(k => k.toLowerCase().includes("vpd"));
+      const rhKeys = selectedKeys.filter(k => (k.toLowerCase().includes("rh") || k.toLowerCase().includes("humidity") || k.toLowerCase().includes("hum_measured")) && !k.toLowerCase().includes("out"));
+      const wcKeys = selectedKeys.filter(k => k.toLowerCase().includes("wc") || k.toLowerCase().includes("vwc"));
+      const radKeys = selectedKeys.filter(k => k.toLowerCase().includes("irr_out") || k.toLowerCase().includes("radiation") || k.toLowerCase().includes("solar"));
+      const windKeys = selectedKeys.filter(k => k.toLowerCase().includes("wind"));
 
+      const tempAvg = tempKeys.length > 0 ? getAverage(tempKeys[0]) : null;
+      const tempOutAvg = tempOutKeys.length > 0 ? getAverage(tempOutKeys[0]) : null;
+      const vpdAvg = vpdKeys.length > 0 ? getAverage(vpdKeys[0]) : null;
+      const rhAvg = rhKeys.length > 0 ? getAverage(rhKeys[0]) : null;
+      const wcAvg = wcKeys.length > 0 ? getAverage(wcKeys[0]) : null;
+      const radAvg = radKeys.length > 0 ? getAverage(radKeys[0]) : null;
+      const windAvg = windKeys.length > 0 ? getAverage(windKeys[0]) : null;
+
+      // 1. ADVANCED INDICATOR: Light/Temperature Ratio (Rapport Lumière / Température 24h)
+      if (tempAvg !== null && radAvg !== null) {
+        const expectedTemp = 18.0 + (radAvg / 100.0) * 1.5;
+        if (radAvg < 100 && tempAvg > 21.0) {
+          const loss = 0.06;
+          totalLoss += loss;
+          score -= 15;
+          audits.push({
+            name: "Rapport Lumière / Température",
+            applied: Number(tempAvg.toFixed(1)),
+            targetMin: 18.0,
+            targetMax: 19.8,
+            unit: "°C (24h)",
+            status: "high",
+            impact: `Température trop élevée (${tempAvg.toFixed(1)}°C) pour le faible rayonnement disponible (${Math.round(radAvg)} W/m²).`,
+            origin: "Technique (Chauffage excessif sous ciel voilé)"
+          });
+          physiologicalReasons.push("Déséquilibre Lumière/Température : Le faible rayonnement limite la photosynthèse. Maintenir une température moyenne élevée (>21°C) provoque une respiration excessive de la plante, épuisant ses réserves de sucres et affaiblissant l'apex (tête fine, baisse de vigueur).");
+          actionPlans.push("Ajuster la consigne de chauffage moyenne 24h à la baisse sous faible ensoleillement (viser 18.5 - 19.5°C).");
+        } else if (radAvg > 180 && tempAvg < 19.5) {
+          const loss = 0.04;
+          totalLoss += loss;
+          score -= 10;
+          audits.push({
+            name: "Rapport Lumière / Température",
+            applied: Number(tempAvg.toFixed(1)),
+            targetMin: 21.0,
+            targetMax: 22.8,
+            unit: "°C (24h)",
+            status: "low",
+            impact: `Température trop basse (${tempAvg.toFixed(1)}°C) pour valoriser le fort rayonnement (${Math.round(radAvg)} W/m²).`,
+            origin: "Technique (Consignes thermiques trop froides par grand soleil)"
+          });
+          physiologicalReasons.push("Déséquilibre Lumière/Température : Le fort ensoleillement offre un potentiel de croissance élevé. Une température trop basse bloque la plante dans un état excessivement végétatif et ralentit inutilement la maturation des fruits.");
+          actionPlans.push("Laisser monter la consigne thermique de jour sous forte luminosité pour accélérer le développement des grappes.");
+        } else {
+          audits.push({
+            name: "Rapport Lumière / Température",
+            applied: Number(tempAvg.toFixed(1)),
+            targetMin: Number((expectedTemp - 1.2).toFixed(1)),
+            targetMax: Number((expectedTemp + 1.2).toFixed(1)),
+            unit: "°C (24h)",
+            status: "optimal",
+            impact: "Rapport Lumière/Température optimal. Excellent équilibre végétatif/génératif.",
+            origin: "Optimal"
+          });
+        }
+      } else {
+        audits.push({ name: "Équilibre Lumière/Temp (Inactif)", applied: null, status: "missing", impact: "Sélectionnez un capteur de rayonnement extérieur (Rayonnement Solaire) et de température intérieure pour auditer ce rapport.", origin: "-" });
+      }
+
+      // 2. ADVANCED INDICATOR: Day/Night DIF (Balance Générative / Végétative)
       if (tempKeys.length > 0) {
-        const tempAvg = getAverage(tempKeys[0]);
-        const tempOutAvg = tempOutKeys.length > 0 ? getAverage(tempOutKeys[0]) : null;
-
-        if (tempAvg !== null) {
-          if (tempAvg > 22.0) {
-            const loss = 0.04;
-            totalLoss += loss;
-            score -= 10;
-            const isOutsideHotter = tempOutAvg !== null && tempOutAvg > tempAvg;
-            audits.push({
-              name: "Température Moyenne",
-              applied: Number(tempAvg.toFixed(1)),
-              targetMin: 18.0,
-              targetMax: 22.0,
-              unit: "°C",
-              status: "high",
-              impact: `Température trop haute (${tempAvg.toFixed(1)}°C). Respiration excessive.`,
-              origin: isOutsideHotter
-                ? "Environnement (Canicule extérieure)"
-                : "Technique (Consigne de ventilation trop tardive ou chauffage excessif)"
-            });
-            if (isOutsideHotter) {
-              physiologicalReasons.push(`Une température moyenne de serre au-dessus de 22.0°C accélère la respiration de la tomate. L'air extérieur étant plus chaud que l'air intérieur (${tempOutAvg?.toFixed(1)}°C vs ${tempAvg.toFixed(1)}°C), la ventilation par ouvrants est inefficace car elle réchaufferait la serre.`);
-              actionPlans.push("Garder les ouvrants restreints pour bloquer l'air chaud externe.");
-              actionPlans.push("Déployer les écrans thermiques ou d'ombrage pour bloquer le rayonnement direct.");
-              actionPlans.push("Activer la brumisation (cooling) pour abaisser la température par évaporation d'eau.");
-            } else {
-              physiologicalReasons.push("Une température moyenne de serre au-dessus de 22.0°C accélère la respiration cellulaire de la tomate, consommant les sucres produits au détriment du développement des fruits.");
-              actionPlans.push("Ajuster les consignes d'ouvertures de toits (ouvrants) pour évacuer la chaleur accumulée plus tôt.");
-              if (tempOutAvg === null) {
-                actionPlans.push("Sélectionnez le capteur de Température Extérieure pour affiner l'audit de ventilation.");
-              }
-            }
-          } else if (tempAvg < 18.0) {
+        const dayStats = getStatsForTimeRange(tempKeys[0], 8, 18);
+        const nightStats = getStatsForTimeRange(tempKeys[0], 21, 6);
+        if (dayStats && nightStats) {
+          const dif = dayStats.avg - nightStats.avg;
+          if (dif > 8.0) {
             const loss = 0.05;
             totalLoss += loss;
             score -= 12;
             audits.push({
-              name: "Température Moyenne",
-              applied: Number(tempAvg.toFixed(1)),
-              targetMin: 18.0,
-              targetMax: 22.0,
+              name: "Écart Jour/Nuit (DIF)",
+              applied: Number(dif.toFixed(1)),
+              targetMin: 4.0,
+              targetMax: 6.5,
               unit: "°C",
-              status: "low",
-              impact: `Température trop froide (${tempAvg.toFixed(1)}°C). Croissance ralentie.`,
-              origin: "Technique (Consigne de chauffage trop faible)"
+              status: "high",
+              impact: `DIF excessif (+${dif.toFixed(1)}°C). Étirement excessif des entrenœuds.`,
+              origin: "Technique (Nuit trop froide combinée à des pointes de chaleur diurnes)"
             });
-            physiologicalReasons.push("Sous 18.0°C de moyenne, la vitesse de division cellulaire chute. La maturation et le développement végétatif accumulent du retard.");
-            actionPlans.push("Rehausser les consignes de chauffage nocturne.");
-          } else {
-            audits.push({
-              name: "Température Moyenne",
-              applied: Number(tempAvg.toFixed(1)),
-              targetMin: 18.0,
-              targetMax: 22.0,
-              unit: "°C",
-              status: "optimal",
-              impact: "Température moyenne journalière idéale.",
-              origin: "Optimal"
-            });
-          }
-        }
-      } else {
-        audits.push({ name: "Température Intérieure (Non sélectionnée)", applied: null, status: "missing", impact: "Sélectionnez une température intérieure pour évaluer les pertes thermiques.", origin: "-" });
-      }
-
-      // 3. Humidité Relative Audit
-      const rhKeys = selectedKeys.filter(k => (k.toLowerCase().includes("rh") || k.toLowerCase().includes("humidity") || k.toLowerCase().includes("hum_measured")) && !k.toLowerCase().includes("out"));
-      if (rhKeys.length > 0) {
-        const rhAvg = getAverage(rhKeys[0]);
-        if (rhAvg !== null) {
-          if (rhAvg > 80) {
+            physiologicalReasons.push("DIF excessif : Un écart jour/nuit supérieur à 8°C étire anormalement les entrenœuds de la tige et affine la tête. Les fleurs s'affaiblissent, ce qui augmente le risque de coulure.");
+            actionPlans.push("Rehausser légèrement la température minimale nocturne ou abaisser la consigne de ventilation de jour.");
+          } else if (dif < 2.0) {
             const loss = 0.03;
             totalLoss += loss;
             score -= 8;
             audits.push({
-              name: "Humidité Relative",
-              applied: Number(rhAvg.toFixed(1)),
-              targetMin: 65,
-              targetMax: 80,
-              unit: "%",
-              status: "high",
-              impact: `Air trop humide (${rhAvg.toFixed(1)}%). Risque de condensation et maladies.`,
-              origin: "Environnement (Météo extérieure pluvieuse / Air saturé)"
-            });
-            physiologicalReasons.push("Une humidité dépassant 80% crée des conditions propices aux champignons pathogènes (mildiou, botrytis). De plus, elle bloque l'évapotranspiration nécessaire aux apports nutritifs.");
-            actionPlans.push("Forcer une ventilation de déshumidification couplée à un léger apport de chaleur.");
-          } else if (rhAvg < 65) {
-            const loss = 0.02;
-            totalLoss += loss;
-            score -= 5;
-            audits.push({
-              name: "Humidité Relative",
-              applied: Number(rhAvg.toFixed(1)),
-              targetMin: 65,
-              targetMax: 80,
-              unit: "%",
+              name: "Écart Jour/Nuit (DIF)",
+              applied: Number(dif.toFixed(1)),
+              targetMin: 4.0,
+              targetMax: 6.5,
+              unit: "°C",
               status: "low",
-              impact: `Air trop sec (${rhAvg.toFixed(1)}%). Risque de dessèchement.`,
-              origin: "Environnement (Fort rayonnement extérieur / Sec)"
+              impact: `DIF insuffisant (+${dif.toFixed(1)}°C). Plante trop végétative.`,
+              origin: "Technique (Températures nocturnes trop élevées)"
             });
-            physiologicalReasons.push("Un air sec sous 65% augmente brutalement la demande évaporative, ce qui fatigue les tissus foliaires de la tomate.");
-            actionPlans.push("Humidifier la serre (brumisation) pour apaiser le microclimat.");
+            physiologicalReasons.push("DIF faible : Un climat trop homogène jour/nuit rend la plante excessivement végétative (grosses feuilles sombres, retard de floraison, manque d'énergie dirigée vers les fruits).");
+            actionPlans.push("Programmer une baisse thermique (pré-nuit) plus rapide en fin d'après-midi pour stimuler la générativité.");
           } else {
             audits.push({
-              name: "Humidité Relative",
-              applied: Number(rhAvg.toFixed(1)),
-              targetMin: 65,
-              targetMax: 80,
-              unit: "%",
+              name: "Écart Jour/Nuit (DIF)",
+              applied: Number(dif.toFixed(1)),
+              targetMin: 4.0,
+              targetMax: 6.5,
+              unit: "°C",
               status: "optimal",
-              impact: "Humidité relative idéale.",
+              impact: "DIF équilibré. Port de plante et vigueur idéaux.",
               origin: "Optimal"
             });
           }
         }
       } else {
-        audits.push({ name: "Humidité Relative (Non sélectionnée)", applied: null, status: "missing", impact: "Sélectionnez l'humidité intérieure pour auditer l'hygrométrie globale.", origin: "-" });
+        audits.push({ name: "Écart DIF Jour/Nuit (Inactif)", applied: null, status: "missing", impact: "Sélectionnez la température intérieure pour surveiller l'équilibre DIF.", origin: "-" });
       }
 
-      // 4. Substrat / Pain (WC / VWC) Audit
-      const wcKeys = selectedKeys.filter(k => k.toLowerCase().includes("wc") || k.toLowerCase().includes("vwc"));
-      if (wcKeys.length > 0) {
-        const wcAvg = getAverage(wcKeys[0]);
-        if (wcAvg !== null) {
-          if (wcAvg < 62.0) {
-            const loss = 0.08;
+      // 3. ADVANCED INDICATOR: Night VPD (Root Pressure Audit)
+      if (vpdKeys.length > 0) {
+        const nightVPD = getStatsForTimeRange(vpdKeys[0], 22, 5);
+        if (nightVPD) {
+          if (nightVPD.avg < 0.35) {
+            const loss = 0.05;
             totalLoss += loss;
-            score -= 22;
+            score -= 15;
             audits.push({
-              name: "Teneur en Eau du Substrat (WC)",
-              applied: Number(wcAvg.toFixed(1)),
-              targetMin: 62.0,
-              targetMax: 72.0,
-              unit: "%",
+              name: "VPD Nocturne (Pression Racinaire)",
+              applied: Number(nightVPD.avg.toFixed(2)),
+              targetMin: 0.45,
+              targetMax: 0.75,
+              unit: "kPa",
               status: "low",
-              impact: `Dessèchement du pain (${wcAvg.toFixed(1)}%). Stress hydrique racinaire sévère.`,
-              origin: "Technique (Irrigations trop courtes ou espacement temporel trop long)"
+              impact: `VPD de nuit critique (${nightVPD.avg.toFixed(2)} kPa). Risque d'éclatement des fruits.`,
+              origin: "Technique (Ventilation fermée et absence de chauffage nocturne minimum)"
             });
-            physiologicalReasons.push("Un substrat sous 62% d'eau endommage le système racinaire actif de la tomate. Ce stress hydrique empêche le grossissement cellulaire des fruits, favorise le cul noir et bloque la sève.");
-            actionPlans.push("Avancer l'heure du premier arrosage ou augmenter le volume de chaque cycle.");
-          } else if (wcAvg > 72.0) {
-            const loss = 0.03;
-            totalLoss += loss;
-            score -= 10;
-            audits.push({
-              name: "Teneur en Eau du Substrat (WC)",
-              applied: Number(wcAvg.toFixed(1)),
-              targetMin: 62.0,
-              targetMax: 72.0,
-              unit: "%",
-              status: "high",
-              impact: `Saturation d'eau (${wcAvg.toFixed(1)}%). Risque d'asphyxie racinaire.`,
-              origin: "Technique (Irrigation excessive en fin de journée ou drainage bouché)"
-            });
-            physiologicalReasons.push("Un substrat saturé en permanence (>72%) empêche l'oxygène de pénétrer la zone racinaire. Les racines s'asphyxient, augmentant la sensibilité au Pythium.");
-            actionPlans.push("Stopper l'irrigation plus tôt avant le coucher du soleil.");
+            physiologicalReasons.push("VPD nocturne bas : Lorsque l'air de nuit est saturé en humidité, la transpiration foliaire s'arrête alors que l'absorption racinaire se poursuit. Cette surpression hydraulique fait éclater la cuticule des fruits (fendillement) et induit des nécroses apicales (carence en calcium aux apex).");
+            actionPlans.push("Activer une température minimale de tuyau de chauffage nocturne avec une légère ouverture des ouvrants pour évacuer l'humidité.");
           } else {
             audits.push({
-              name: "Teneur en Eau du Substrat (WC)",
-              applied: Number(wcAvg.toFixed(1)),
-              targetMin: 62.0,
-              targetMax: 72.0,
-              unit: "%",
+              name: "VPD Nocturne (Pression Racinaire)",
+              applied: Number(nightVPD.avg.toFixed(2)),
+              targetMin: 0.45,
+              targetMax: 0.75,
+              unit: "kPa",
               status: "optimal",
-              impact: "Humidité racinaire idéale.",
+              impact: "Pression racinaire nocturne saine et équilibrée.",
               origin: "Optimal"
             });
           }
         }
       } else {
-        audits.push({ name: "Substrat WC (Non sélectionné)", applied: null, status: "missing", impact: "Sélectionnez le Slab WC pour analyser la perte de gain liée à l'arrosage.", origin: "-" });
+        audits.push({ name: "VPD Nocturne (Inactif)", applied: null, status: "missing", impact: "Sélectionnez le VPD pour diagnostiquer le risque d'éclatement des fruits.", origin: "-" });
+      }
+
+      // 4. ADVANCED INDICATOR: Substrate Dry-Back (Dessèchement nocturne du pain)
+      if (wcKeys.length > 0) {
+        const eveStats = getStatsForTimeRange(wcKeys[0], 17, 19);
+        const morStats = getStatsForTimeRange(wcKeys[0], 5, 7);
+        if (eveStats && morStats) {
+          const dryBack = eveStats.avg - morStats.avg;
+          if (dryBack < 6.0) {
+            const loss = 0.06;
+            totalLoss += loss;
+            score -= 18;
+            audits.push({
+              name: "Ressuyage Nocturne (Dry-Back)",
+              applied: Number(dryBack.toFixed(1)),
+              targetMin: 8.0,
+              targetMax: 12.0,
+              unit: "%",
+              status: "low",
+              impact: `Dry-back insuffisant (${dryBack.toFixed(1)}%). Risque d'asphyxie des racines.`,
+              origin: "Technique (Irrigations terminées trop tard en fin de journée)"
+            });
+            physiologicalReasons.push("Dry-back faible : Le substrat reste trop saturé en eau pendant la nuit. Les racines s'asphyxient temporairement par manque d'oxygène, favorisant le Pythium et affaiblissant la capacité d'absorption le lendemain matin.");
+            actionPlans.push("Avancer l'heure d'arrêt de la dernière irrigation (viser 2h à 3h avant le coucher du soleil).");
+          } else if (dryBack > 14.0) {
+            const loss = 0.05;
+            totalLoss += loss;
+            score -= 15;
+            audits.push({
+              name: "Ressuyage Nocturne (Dry-Back)",
+              applied: Number(dryBack.toFixed(1)),
+              targetMin: 8.0,
+              targetMax: 12.0,
+              unit: "%",
+              status: "high",
+              impact: `Dry-back excessif (${dryBack.toFixed(1)}%). Stress hydrique et accumulation d'EC.`,
+              origin: "Technique (Irrigations arrêtées trop tôt)"
+            });
+            physiologicalReasons.push("Dry-back fort : Un égouttage nocturne supérieur à 14% indique un stress hydrique de fin de nuit. Les poils racinaires sèchent et la concentration en sels (EC) augmente trop vite dans le pain.");
+            actionPlans.push("Retarder l'heure du dernier arrosage ou augmenter l'apport hydrique nocturne si nécessaire.");
+          } else {
+            audits.push({
+              name: "Ressuyage Nocturne (Dry-Back)",
+              applied: Number(dryBack.toFixed(1)),
+              targetMin: 8.0,
+              targetMax: 12.0,
+              unit: "%",
+              status: "optimal",
+              impact: "Dry-back nocturne optimal (bon équilibre air/eau dans le substrat).",
+              origin: "Optimal"
+            });
+          }
+        }
+      } else {
+        audits.push({ name: "Ressuyage Pain Dry-Back (Inactif)", applied: null, status: "missing", impact: "Sélectionnez le Slab WC pour mesurer le ressuyage nocturne (dry-back).", origin: "-" });
+      }
+
+      // 5. External Environment safety checks (Ventilation vs outside wind drafts)
+      if (tempAvg !== null && tempOutAvg !== null) {
+        if (tempAvg > 22.0) {
+          const isOutsideHotter = tempOutAvg > tempAvg;
+          if (isOutsideHotter) {
+            physiologicalReasons.push(`Alerte Canicule : La température intérieure moyenne est élevée (${tempAvg.toFixed(1)}°C), mais l'air extérieur l'est encore plus (${tempOutAvg.toFixed(1)}°C). Ouvrir les ouvrants amènerait un flux thermique externe massif qui surchaufferait le dôme de culture.`);
+            actionPlans.push("Fermer ou restreindre fortement les ouvrants pour bloquer l'air extérieur chaud.");
+            actionPlans.push("Activer la brumisation (cooling) pour générer un abaissement de température par évaporation d'eau.");
+            actionPlans.push("Déployer les écrans d'ombrage pour réduire le rayonnement solaire incident.");
+          } else if (windAvg !== null && windAvg > 4.5) {
+            physiologicalReasons.push(`Alerte Vent Fort : La serre surchauffe (${tempAvg.toFixed(1)}°C) sous vent fort (${windAvg.toFixed(1)} m/s). Ouvrir les ouvrants du côté exposé au vent (côté au-vent) créerait des courants d'air froid violents et stresserait les feuilles.`);
+            actionPlans.push("Ouvrir uniquement les ouvrants du côté opposé au vent (côté sous-vent) pour aspirer l'air chaud par dépression sans créer de courant d'air direct.");
+          }
+        }
       }
 
       if (physiologicalReasons.length === 0) {
-        physiologicalReasons.push("Tous les facteurs climatiques et d'irrigation analysés se situent dans la plage optimale d'activité photosynthétique. La plante fonctionne à 100% de ses capacités physiologiques.");
+        physiologicalReasons.push("L'équilibre thermique, le rapport lumière/température et la pression racinaire nocturne sont optimaux. La tomate exprime son plein potentiel végétatif et génératif.");
       }
       if (actionPlans.length === 0) {
-        actionPlans.push("Conserver la stratégie climatique actuelle. Surveiller les prévisions météorologiques.");
+        actionPlans.push("Maintenir la stratégie d'irrigation et de régulation climatique en cours.");
       }
 
       const overallStatus = score >= 90 ? "Optimal" : score >= 75 ? "Ajustement requis" : "Alerte Climat";
+      const statusColor = score >= 90 ? "emerald" : score >= 75 ? "amber" : "rose";
+
+      return {
+        dateStr,
+        day: index + 1,
+        status: overallStatus,
+        statusColor,
+        overallScore: Math.max(10, score),
+        potentialGain: Number(totalLoss.toFixed(2)),
+        audits,
+        physiologicalExplanation: physiologicalReasons.join(" "),
+        actionPlan: actionPlans
+      };
+    });
+  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2]);lerte Climat";
       const statusColor = score >= 90 ? "emerald" : score >= 75 ? "amber" : "rose";
 
       return {
