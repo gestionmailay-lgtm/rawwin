@@ -1858,6 +1858,9 @@ export default function AranetUnifiedDashboard() {
     ));
   };
 
+  const leftActiveKeys = visibleChartKeys.filter(k => (metricConfigs[k]?.axis || "left") === "left");
+  const rightActiveKeys = visibleChartKeys.filter(k => (metricConfigs[k]?.axis || "left") === "right");
+
   const chartMargin = useMemo(() => {
     const leftCount = activeYAxes.filter(a => a.axis === "left").length;
     const rightCount = activeYAxes.filter(a => a.axis === "right").length;
