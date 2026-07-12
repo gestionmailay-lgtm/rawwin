@@ -459,6 +459,12 @@ const AGRONOMIC_DATA: AgronomicDay[] = [
 ];
 
 export default function AranetUnifiedDashboard() {
+  const [customPrivaMetrics, setCustomPrivaMetrics] = useState<any[]>([]);
+
+  const allMetrics = useMemo(() => {
+    return [...PLOTTABLE_METRICS, ...customPrivaMetrics];
+  }, [customPrivaMetrics]);
+
   const [activeTab, setActiveTab] = useState<"agronomic" | "selection" | "charts" | "climatique">("charts");
   const [selectedDayNum, setSelectedDayNum] = useState<number>(1);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([
@@ -689,6 +695,7 @@ export default function AranetUnifiedDashboard() {
   // Load from localStorage on mount and initialize configurations
   useEffect(() => {
     let activeConfigs: any = {};
+    let savedCustom: any[] = [];
     try {
       const savedKeys = localStorage.getItem("aranet_selected_keys");
       if (savedKeys) {
@@ -707,16 +714,21 @@ export default function AranetUnifiedDashboard() {
       if (savedDensity) {
         setDensityPerM2(Number(savedDensity));
       }
-      // Date ranges are determined dynamically relative to today's date on every reload
+      const savedCustomPriva = localStorage.getItem("aranet_custom_priva_metrics");
+      if (savedCustomPriva) {
+        savedCustom = JSON.parse(savedCustomPriva);
+        setCustomPrivaMetrics(savedCustom);
+      }
     } catch (e) {
       console.error("Failed to load saved configurations", e);
     }
 
-    // Merge/initialize missing configs
-    PLOTTABLE_METRICS.forEach(m => {
+    // Merge/initialize missing configs for both built-in and saved custom metrics
+    const combined = [...PLOTTABLE_METRICS, ...savedCustom];
+    combined.forEach(m => {
       if (!activeConfigs[m.key]) {
         activeConfigs[m.key] = {
-          unit: m.units[0].id,
+          unit: m.units[0]?.id || "custom",
           range: "24h",
           axis: "left"
         };
@@ -735,16 +747,54 @@ export default function AranetUnifiedDashboard() {
       localStorage.setItem("aranet_metric_configs", JSON.stringify(metricConfigs));
       localStorage.setItem("aranet_plants_on_scale", String(plantsOnScale));
       localStorage.setItem("aranet_density_per_m2", String(densityPerM2));
-      // Date ranges default to relative periods on every reload
+      localStorage.setItem("aranet_custom_priva_metrics", JSON.stringify(customPrivaMetrics));
     } catch (e) {
       console.error("Failed to save configurations", e);
     }
-  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, startDate, endDate]);
+  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, customPrivaMetrics]);
 
   const toggleKey = (key: string) => {
     setSelectedKeys(prev => 
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
+  };
+
+  // Helper to toggle custom datapoint from full catalog
+  const toggleCatalogDatapoint = (dp: any) => {
+    const builtIn = PLOTTABLE_METRICS.find(m => m.variableId === dp.variableId);
+    const key = builtIn ? builtIn.key : `priva_custom_${dp.variableId}`;
+
+    if (selectedKeys.includes(key)) {
+      setSelectedKeys(prev => prev.filter(k => k !== key));
+    } else {
+      if (!builtIn) {
+        const colors = ["#ec4899", "#f43f5e", "#a855f7", "#6366f1", "#06b6d4", "#14b8a6", "#10b981", "#84cc16", "#eab308"];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        const newMetric = {
+          key,
+          name: `Priva - ${dp.name}`,
+          category: `Priva - Personnalisés`,
+          isPriva: true,
+          variableId: dp.variableId,
+          deviceId: dp.deviceId,
+          deviceGroupId: dp.deviceGroupId || "none",
+          color: randomColor,
+          units: [{ id: dp.unit || "custom", name: dp.unit || "N/A" }]
+        };
+        
+        if (!customPrivaMetrics.some(m => m.key === key)) {
+          setCustomPrivaMetrics(prev => [...prev, newMetric]);
+        }
+      }
+      setSelectedKeys(prev => [...prev, key]);
+    }
+  };
+
+  const isDatapointSelected = (dp: any) => {
+    const builtIn = PLOTTABLE_METRICS.find(m => m.variableId === dp.variableId);
+    const key = builtIn ? builtIn.key : `priva_custom_${dp.variableId}`;
+    return selectedKeys.includes(key);
   };
 
   const updateMetricConfig = (key: string, field: string, value: any) => {
@@ -760,7 +810,7 @@ export default function AranetUnifiedDashboard() {
   const applyGlobalSmoothing = (smooth: boolean) => {
     setMetricConfigs(prev => {
       const next = { ...prev };
-      PLOTTABLE_METRICS.forEach(m => {
+      allMetrics.forEach(m => {
         next[m.key] = {
           ...next[m.key],
           smooth: smooth
@@ -773,7 +823,7 @@ export default function AranetUnifiedDashboard() {
   const applyGlobalWindowSize = (size: number) => {
     setMetricConfigs(prev => {
       const next = { ...prev };
-      PLOTTABLE_METRICS.forEach(m => {
+      allMetrics.forEach(m => {
         next[m.key] = {
           ...next[m.key],
           sgWindow: size
@@ -797,7 +847,7 @@ export default function AranetUnifiedDashboard() {
 
       // 1. Fetch Aranet data in parallel
       const aranetPromises = aranetKeys.map(async (key) => {
-        const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+        const m = allMetrics.find(item => item.key === key)!;
         const config = metricConfigs[key] || { unit: m.units[0].id, range: "24h", axis: "left" };
         
         const res = await fetch(
@@ -861,7 +911,7 @@ export default function AranetUnifiedDashboard() {
       let privaResults: { key: string; readings: any[] }[] = [];
       if (privaKeys.length > 0) {
         const privaMetricsToQuery = privaKeys.map(k => {
-          const m = PLOTTABLE_METRICS.find(item => item.key === k)!;
+          const m = allMetrics.find(item => item.key === k)!;
           return {
             variableId: m.variableId,
             deviceId: m.deviceId,
@@ -946,7 +996,7 @@ export default function AranetUnifiedDashboard() {
         }
 
         privaResults = privaKeys.map(key => {
-          const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+          const m = allMetrics.find(item => item.key === key)!;
           const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
           const readings = matchSeries && matchSeries.measurements ? matchSeries.measurements.map((v: any) => ({
             time: v.timestampUtc,
@@ -1159,7 +1209,7 @@ export default function AranetUnifiedDashboard() {
   const visibleChartKeys = useMemo(() => {
     return selectedKeys.filter((k) => {
       if (hiddenKeysOnChart.includes(k)) return false;
-      const m = PLOTTABLE_METRICS.find(item => item.key === k);
+      const m = allMetrics.find(item => item.key === k);
       if (m && m.isPriva && m.category.includes("Compartiment")) {
         if (selectedCompartment !== "all" && m.category !== `Priva - Compartiment ${selectedCompartment}`) {
           return false;
@@ -1182,7 +1232,7 @@ export default function AranetUnifiedDashboard() {
     } = {};
 
     visibleChartKeys.forEach((key) => {
-      const m = PLOTTABLE_METRICS.find(item => item.key === key);
+      const m = allMetrics.find(item => item.key === key);
       if (!m) return;
       const config = metricConfigs[key] || {};
       const axis = config.axis || "left";
@@ -1209,7 +1259,7 @@ export default function AranetUnifiedDashboard() {
   const firstYAxisId = useMemo(() => {
     if (selectedKeys.length === 0) return undefined;
     const key = selectedKeys[0];
-    const m = PLOTTABLE_METRICS.find(item => item.key === key);
+    const m = allMetrics.find(item => item.key === key);
     if (!m) return undefined;
     const config = metricConfigs[key] || {};
     const axis = config.axis || "left";
@@ -1227,7 +1277,7 @@ export default function AranetUnifiedDashboard() {
           </p>
           <div className="space-y-1">
             {payload.map((item: any) => {
-              const metric = PLOTTABLE_METRICS.find(m => m.key === item.dataKey);
+              const metric = allMetrics.find(m => m.key === item.dataKey);
               if (!metric) return null;
               const config = metricConfigs[item.dataKey];
               const unitName = metric.units.find(u => u.id === config?.unit)?.name || "";
@@ -1251,7 +1301,7 @@ export default function AranetUnifiedDashboard() {
   };
 
   // Group metrics by visibility (filtered by active compartment)
-  const visibleMetrics = PLOTTABLE_METRICS.filter(m => {
+  const visibleMetrics = allMetrics.filter(m => {
     if (!selectedKeys.includes(m.key)) return false;
     // Aranet only exists in Compartment 1
     if (!m.isPriva && selectedCompartment !== "1" && selectedCompartment !== "all") return false;
@@ -1264,7 +1314,7 @@ export default function AranetUnifiedDashboard() {
     return true;
   });
 
-  const hiddenMetrics = PLOTTABLE_METRICS.filter(m => {
+  const hiddenMetrics = allMetrics.filter(m => {
     if (selectedKeys.includes(m.key)) return false;
     // Aranet only exists in Compartment 1
     if (!m.isPriva && selectedCompartment !== "1" && selectedCompartment !== "all") return false;
@@ -1590,7 +1640,7 @@ export default function AranetUnifiedDashboard() {
                     <div className="flex flex-wrap items-center gap-2 bg-background p-3 rounded-2xl border border-muted/20 shadow-sm shrink-0 animate-in fade-in duration-300">
                       <span className="text-[10px] font-black text-muted-foreground uppercase mr-1">Afficher / Masquer :</span>
                       {selectedKeys.map(key => {
-                        const m = PLOTTABLE_METRICS.find(item => item.key === key);
+                        const m = allMetrics.find(item => item.key === key);
                         if (!m) return null;
                         const isVisible = !hiddenKeysOnChart.includes(key);
                         const config = metricConfigs[key] || {};
@@ -1754,7 +1804,7 @@ export default function AranetUnifiedDashboard() {
 
                                   {/* lines mapping */}
                                   {visibleChartKeys.flatMap(key => {
-                                    const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+                                    const m = allMetrics.find(item => item.key === key)!;
                                     const config = metricConfigs[key] || {};
                                     const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
                                     const unitName = unitObj ? unitObj.name : "";
@@ -1823,7 +1873,7 @@ export default function AranetUnifiedDashboard() {
                                   >
                                     <LineChart data={chartData}>
                                       {visibleChartKeys.map(key => {
-                                        const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+                                        const m = allMetrics.find(item => item.key === key)!;
                                         const config = metricConfigs[key] || {};
                                         const sensorColor = config.color || m.color;
                                         return (
@@ -1850,7 +1900,7 @@ export default function AranetUnifiedDashboard() {
                               {/* Left Side Badges */}
                               <div className="flex flex-wrap gap-1.5">
                                 {leftActiveKeys.map(key => {
-                                  const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+                                  const m = allMetrics.find(item => item.key === key)!;
                                   const label = METRIC_BADGES[key] || key.substring(0, 3);
                                   const config = metricConfigs[key] || {};
                                   const sensorColor = config.color || m.color;
@@ -1869,7 +1919,7 @@ export default function AranetUnifiedDashboard() {
                               {/* Right Side Badges */}
                               <div className="flex flex-wrap gap-1.5">
                                 {rightActiveKeys.map(key => {
-                                  const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+                                  const m = allMetrics.find(item => item.key === key)!;
                                   const label = METRIC_BADGES[key] || key.substring(0, 3);
                                   const config = metricConfigs[key] || {};
                                   const sensorColor = config.color || m.color;
@@ -2271,7 +2321,8 @@ export default function AranetUnifiedDashboard() {
                     <table className="w-full border-collapse text-left">
                       <thead>
                         <tr className="bg-muted/10 border-b text-[9px] uppercase font-black tracking-widest text-muted-foreground">
-                          <th className="p-3 pl-6">Nom de la Variable</th>
+                          <th className="p-3 pl-6 w-12 text-center">Sélection</th>
+                          <th className="p-3">Nom de la Variable</th>
                           <th className="p-3">Unité</th>
                           <th className="p-3">ID du Capteur (variableId)</th>
                           <th className="p-3">Matériel (deviceId)</th>
@@ -2288,21 +2339,37 @@ export default function AranetUnifiedDashboard() {
                           if (filteredCatalog.length === 0) {
                             return (
                               <tr>
-                                <td colSpan={4} className="p-8 text-center text-xs text-muted-foreground font-bold">
+                                <td colSpan={5} className="p-8 text-center text-xs text-muted-foreground font-bold">
                                   Aucune variable ne correspond à votre recherche.
                                 </td>
                               </tr>
                             );
                           }
 
-                          return filteredCatalog.map((dp, idx) => (
-                            <tr key={idx} className="border-b text-xs hover:bg-muted/5 font-bold text-slate-700 dark:text-slate-300">
-                              <td className="p-3 pl-6 font-bold text-foreground text-[11px]">{dp.name}</td>
-                              <td className="p-3 text-muted-foreground">{dp.unit || "N/A"}</td>
-                              <td className="p-3 font-mono text-[10px] text-primary select-all">{dp.variableId}</td>
-                              <td className="p-3 text-muted-foreground font-mono text-[10px]">{dp.deviceId}</td>
-                            </tr>
-                          ));
+                          return filteredCatalog.map((dp, idx) => {
+                            const isSelected = isDatapointSelected(dp);
+                            return (
+                              <tr key={idx} className="border-b text-xs hover:bg-muted/5 font-bold text-slate-700 dark:text-slate-300">
+                                <td className="p-3 pl-6 text-center">
+                                  <button
+                                    onClick={() => toggleCatalogDatapoint(dp)}
+                                    className="focus:outline-none hover:scale-110 active:scale-95 transition-transform"
+                                    title={isSelected ? "Désélectionner du graphique" : "Sélectionner pour le graphique"}
+                                  >
+                                    {isSelected ? (
+                                      <CheckSquare className="h-4 w-4 text-primary shrink-0" />
+                                    ) : (
+                                      <Square className="h-4 w-4 text-gray-300 dark:text-gray-600 shrink-0" />
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="p-3 font-bold text-foreground text-[11px]">{dp.name}</td>
+                                <td className="p-3 text-muted-foreground">{dp.unit || "N/A"}</td>
+                                <td className="p-3 font-mono text-[10px] text-primary select-all">{dp.variableId}</td>
+                                <td className="p-3 text-muted-foreground font-mono text-[10px]">{dp.deviceId}</td>
+                              </tr>
+                            );
+                          });
                         })()}
                       </tbody>
                     </table>
