@@ -14,9 +14,9 @@ const CACHE_PATH = path.resolve(process.cwd(), "scratch", "priva-datapoints-cach
 let cachedToken: string | null = null;
 let cachedTokenExpiry: number = 0;
 
-async function getPrivaToken(): Promise<string> {
-  // If token is still valid, return it
-  if (cachedToken && Date.now() < cachedTokenExpiry) {
+async function getPrivaToken(forceFresh = false): Promise<string> {
+  // If token is still valid and we are not forcing a fresh one, return it
+  if (!forceFresh && cachedToken && Date.now() < cachedTokenExpiry) {
     return cachedToken;
   }
 
@@ -54,6 +54,25 @@ async function getPrivaToken(): Promise<string> {
   return cachedToken;
 }
 
+// Wrapper fetch utility that clears cache and retries once on 401/403 errors
+async function fetchPrivaWithRetry(url: string, options: any): Promise<Response> {
+  let res = await fetch(url, options);
+
+  // If unauthorized or forbidden, token might be invalid/expired on the server side
+  if ((res.status === 401 || res.status === 403) && cachedToken) {
+    console.warn(`Priva API returned status ${res.status}. Clearing token cache and retrying...`);
+    cachedToken = null;
+    cachedTokenExpiry = 0;
+
+    const freshToken = await getPrivaToken(true);
+    options.headers["Authorization"] = `Bearer ${freshToken}`;
+
+    res = await fetch(url, options);
+  }
+
+  return res;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -83,7 +102,7 @@ export async function GET(request: NextRequest) {
       const endTime = searchParams.get("endTime") || yesterdayMidnight.toISOString();
 
       const url = `https://horti-api.priva.com/api/sites/${SITE_ID}/datapoints?startTime=${startTime}&endTime=${endTime}`;
-      const res = await fetch(url, {
+      const res = await fetchPrivaWithRetry(url, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -93,9 +112,9 @@ export async function GET(request: NextRequest) {
 
       if (!res.ok) {
         const errText = await res.text();
-        // If quota exceeded but we have old cache file, use it even if it's older than 24h
-        if (res.status === 429 && fs.existsSync(CACHE_PATH)) {
-          console.warn("Quota exceeded, serving stale cache file.");
+        // Serve stale cache on error if available
+        if (fs.existsSync(CACHE_PATH)) {
+          console.warn("API request failed, serving stale cache file.");
           const cachedContent = fs.readFileSync(CACHE_PATH, "utf8");
           return NextResponse.json(JSON.parse(cachedContent));
         }
@@ -140,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     const url = `https://horti-api.priva.com/api/sites/${SITE_ID}/data`;
-    const res = await fetch(url, {
+    const res = await fetchPrivaWithRetry(url, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,

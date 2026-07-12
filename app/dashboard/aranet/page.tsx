@@ -864,6 +864,13 @@ export default function AranetUnifiedDashboard() {
         if (adjustedEnd.getTime() > maxEndAllowed.getTime()) {
           adjustedEnd = maxEndAllowed;
         }
+
+        // Ensure we cap the start date to avoid rolling history 403 restriction (max 5 days ago)
+        const fiveDaysAgo = new Date(todayMidnight.getTime() - 5 * 24 * 3600 * 1000);
+        if (adjustedStart.getTime() < fiveDaysAgo.getTime()) {
+          adjustedStart = fiveDaysAgo;
+        }
+
         if (adjustedStart.getTime() >= adjustedEnd.getTime()) {
           adjustedStart = new Date(adjustedEnd.getTime() - 24 * 3600 * 1000);
         }
