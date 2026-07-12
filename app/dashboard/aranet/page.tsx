@@ -891,53 +891,73 @@ export default function AranetUnifiedDashboard() {
           adjustedStart = new Date(adjustedEnd.getTime() - 24 * 3600 * 1000);
         }
 
-        const valRes = await fetch("/api/priva", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            startTime: adjustedStart.toISOString(),
-            endTime: adjustedEnd.toISOString(),
-            datapoints: privaMetricsToQuery
-          })
-        });
+        const cacheKey = `${adjustedStart.toISOString()}_${adjustedEnd.toISOString()}_${privaKeys.sort().join(",")}`;
+        let series = [];
+        let hasCache = false;
 
-        if (!valRes.ok) {
-          const errDetail = await valRes.json().catch(() => ({}));
-          console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
-          let errMsg = errDetail.error || "Erreur de connexion";
-          if (errDetail.details) {
-            try {
-              const nested = JSON.parse(errDetail.details);
-              if (nested.message) errMsg = nested.message;
-              else if (nested.error) errMsg = nested.error;
-            } catch {
-              errMsg = errDetail.details;
-            }
-          }
-          setPrivaChartError(`Données Priva indisponibles (Status ${valRes.status}) : ${errMsg}`);
-        } else {
-          const valData = await valRes.json();
-          const series = valData.data || [];
-
+        if (privaCacheRef.current[cacheKey]) {
+          series = privaCacheRef.current[cacheKey];
+          hasCache = true;
+          console.log("Serving Priva historical data from client-side cache for key:", cacheKey);
+          
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           if (endDateTime.getTime() >= today.getTime()) {
             setPrivaChartError("Info : L'API Priva n'autorise pas l'accès aux données de la journée en cours en temps réel. Les courbes s'arrêtent à hier 23h59.");
           }
+        }
 
-          privaResults = privaKeys.map(key => {
-            const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
-            const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
-            const readings = matchSeries && matchSeries.measurements ? matchSeries.measurements.map((v: any) => ({
-              time: v.timestampUtc,
-              value: parseFloat(v.value)
-            })) : [];
-
-            return {
-              key,
-              readings
-            };
+        if (!hasCache) {
+          const valRes = await fetch("/api/priva", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              startTime: adjustedStart.toISOString(),
+              endTime: adjustedEnd.toISOString(),
+              datapoints: privaMetricsToQuery
+            })
           });
+
+          if (!valRes.ok) {
+            const errDetail = await valRes.json().catch(() => ({}));
+            console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
+            let errMsg = errDetail.error || "Erreur de connexion";
+            if (errDetail.details) {
+              try {
+                const nested = JSON.parse(errDetail.details);
+                if (nested.message) errMsg = nested.message;
+                else if (nested.error) errMsg = nested.error;
+              } catch {
+                errMsg = errDetail.details;
+              }
+            }
+            setPrivaChartError(`Données Priva indisponibles (Status ${valRes.status}) : ${errMsg}`);
+          } else {
+            const valData = await valRes.json();
+            series = valData.data || [];
+            privaCacheRef.current[cacheKey] = series;
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (endDateTime.getTime() >= today.getTime()) {
+              setPrivaChartError("Info : L'API Priva n'autorise pas l'accès aux données de la journée en cours en temps réel. Les courbes s'arrêtent à hier 23h59.");
+            }
+          }
+        }
+
+        privaResults = privaKeys.map(key => {
+          const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+          const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
+          const readings = matchSeries && matchSeries.measurements ? matchSeries.measurements.map((v: any) => ({
+            time: v.timestampUtc,
+            value: parseFloat(v.value)
+          })) : [];
+
+          return {
+            key,
+            readings
+          };
+        });
         }
       }
 
@@ -960,6 +980,7 @@ export default function AranetUnifiedDashboard() {
 
   // Debounce ref to deduplicate rapid multiple fetches on state change
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const privaCacheRef = useRef<Record<string, any>>({});
 
   // Re-fetch when selections, configurations, or date range changes (debounced by 300ms)
   useEffect(() => {
