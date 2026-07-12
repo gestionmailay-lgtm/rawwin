@@ -1471,7 +1471,10 @@ export default function AranetUnifiedDashboard() {
         const m = allMetrics.find(item => item.key === key);
         return (
           unit.toLowerCase().includes("j/cm") || 
-          (m && (m.unit.toLowerCase().includes("j/cm") || m.name.toLowerCase().includes("somme de rayonnement") || m.name.toLowerCase().includes("somme de radiation")))
+          (m && (
+            (m.unit && m.unit.toLowerCase().includes("j/cm")) || 
+            (m.name && (m.name.toLowerCase().includes("somme de rayonnement") || m.name.toLowerCase().includes("somme de radiation")))
+          ))
         );
       });
 
