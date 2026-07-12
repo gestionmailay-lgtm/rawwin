@@ -977,10 +977,12 @@ export default function AranetUnifiedDashboard() {
 
           if (!valRes.ok) {
             const errDetail = await valRes.json().catch(() => ({}));
-            console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
             
             if (valRes.status === 429 || valRes.status === 403) {
               privaLockoutExpiryRef.current = Date.now() + 60000; // Lock out for 60 seconds
+              console.warn("Priva API Quota Exceeded (429/403). Cooldown active.");
+            } else {
+              console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
             }
 
             let errMsg = errDetail.error || "Erreur de connexion";
