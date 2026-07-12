@@ -1078,25 +1078,17 @@ export default function AranetUnifiedDashboard() {
     updateZoomTimeRangeDebounced(null);
   }, [startDate, endDate]);
 
-  // Merge datasets into a single chart structure based on absolute timestamp alignment with dynamic decimation
+  // Merge datasets into a single chart structure based on absolute timestamp alignment
   const chartData = useMemo(() => {
     if (Object.keys(rawDataMap).length === 0) return [];
 
-    const step = 2; // Pas fixe de 2 minutes pour tous les temps et zooms
+    const step = 1; // Precision de 1 minute pour le maximum de details
 
     // Apply smoothing if enabled for each sensor
     const smoothedDataMap: { [key: string]: { readings: any[], rawValues: number[] } } = {};
     selectedKeys.forEach((key) => {
       const readings = rawDataMap[key] || [];
       
-      // Decimate readings first
-      const decimatedReadings = [];
-      for (let i = 0; i < readings.length; i += step) {
-        if (readings[i]) {
-          decimatedReadings.push(readings[i]);
-        }
-      }
-
       const config = metricConfigs[key];
       const isSmooth = config?.smooth === true || config?.smooth === "true";
       let windowSize = Number(config?.sgWindow || 9);
@@ -1106,16 +1098,17 @@ export default function AranetUnifiedDashboard() {
         windowSize += 1;
       }
 
-      const rawValues = decimatedReadings.map((r: any) => {
+      const rawValues = readings.map((r: any) => {
         if (key === "plant_weight_gain") {
           return (r.value / plantsOnScale) * densityPerM2;
         }
         return r.value;
       });
-      if (isSmooth && decimatedReadings.length > 0) {
+
+      if (isSmooth && readings.length > 0) {
         const smoothedValues = applySavitzkyGolay(rawValues, windowSize, 2);
         smoothedDataMap[key] = {
-          readings: decimatedReadings.map((r: any, idx: number) => ({
+          readings: readings.map((r: any, idx: number) => ({
             ...r,
             value: smoothedValues[idx]
           })),
@@ -1123,7 +1116,7 @@ export default function AranetUnifiedDashboard() {
         };
       } else {
         smoothedDataMap[key] = {
-          readings: decimatedReadings.map((r: any, idx: number) => ({
+          readings: readings.map((r: any, idx: number) => ({
             ...r,
             value: rawValues[idx]
           })),
@@ -1139,6 +1132,7 @@ export default function AranetUnifiedDashboard() {
       const readings = entry?.readings || [];
       readings.forEach((r, idx) => {
         const date = new Date(r.time);
+        if (isNaN(date.getTime())) return;
         
         // Align minutes to the nearest step to group all sensors into matching intervals
         const mins = date.getMinutes();
