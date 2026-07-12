@@ -611,8 +611,8 @@ export default function AranetUnifiedDashboard() {
     return d.toISOString().split("T")[0];
   };
 
-  const [startDate, setStartDate] = useState<string>(getPastDateStr(7));
-  const [endDate, setEndDate] = useState<string>(getTodayStr());
+  const [startDate, setStartDate] = useState<string>(getPastDateStr(2));
+  const [endDate, setEndDate] = useState<string>(getPastDateStr(1));
   const [zoomTimeRange, setZoomTimeRange] = useState<{ min: number; max: number } | null>(null);
 
   const startDateTime = useMemo(() => {
@@ -1545,7 +1545,11 @@ export default function AranetUnifiedDashboard() {
               Sélection des données
             </button>
             <button
-              onClick={() => setActiveTab("charts")}
+              onClick={() => {
+                setActiveTab("charts");
+                setStartDate(getPastDateStr(2));
+                setEndDate(getPastDateStr(1));
+              }}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                 activeTab === "charts"
                   ? "bg-background text-foreground shadow-sm"
