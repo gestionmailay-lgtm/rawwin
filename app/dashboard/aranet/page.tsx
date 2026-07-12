@@ -1174,6 +1174,273 @@ export default function AranetUnifiedDashboard() {
     return Object.values(bins).sort((a: any, b: any) => a.time - b.time);
   }, [rawDataMap, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, apiDaysRequested, zoomTimeRange]);
 
+  // Dynamic Agronomic analysis based on mapped chart data to calculate loss of cumulative gain
+  const dynamicAgronomicData = useMemo(() => {
+    if (chartData.length === 0) return [];
+    
+    // Group chartData by date string
+    const daysMap: { [dateStr: string]: any[] } = {};
+    chartData.forEach(row => {
+      const d = new Date(row.time);
+      const dateStr = d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
+      if (!daysMap[dateStr]) daysMap[dateStr] = [];
+      daysMap[dateStr].push(row);
+    });
+
+    return Object.keys(daysMap).map((dateStr, index) => {
+      const rows = daysMap[dateStr];
+      const audits: any[] = [];
+      let totalLoss = 0;
+      let score = 100;
+      const physiologicalReasons: string[] = [];
+      const actionPlans: string[] = [];
+
+      const getAverage = (key: string) => {
+        const valid = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key]));
+        if (valid.length === 0) return null;
+        return valid.reduce((sum, r) => sum + r[key], 0) / valid.length;
+      };
+
+      // 1. VPD Audit
+      const vpdKeys = selectedKeys.filter(k => k.toLowerCase().includes("vpd"));
+      if (vpdKeys.length > 0) {
+        const vpdAvg = getAverage(vpdKeys[0]);
+        if (vpdAvg !== null) {
+          if (vpdAvg < 0.8) {
+            const loss = 0.05;
+            totalLoss += loss;
+            score -= 15;
+            audits.push({
+              name: "Déficit de Pression de Vapeur (VPD)",
+              applied: Number(vpdAvg.toFixed(2)),
+              targetMin: 0.8,
+              targetMax: 1.2,
+              unit: "kPa",
+              status: "low",
+              impact: `VPD trop bas (${vpdAvg.toFixed(2)} kPa). Transpiration ralentie.`,
+              origin: "Technique (Ventilation / Chauffage insuffisant)"
+            });
+            physiologicalReasons.push("Un VPD inférieur à 0.8 kPa indique un air trop humide. La plante réduit sa transpiration racinaire, ce qui limite le transport passif du calcium et induit des carences.");
+            actionPlans.push("Ouvrir légèrement les ouvrants pour évacuer l'humidité accumulée.");
+          } else if (vpdAvg > 1.2) {
+            const loss = 0.07;
+            totalLoss += loss;
+            score -= 20;
+            audits.push({
+              name: "Déficit de Pression de Vapeur (VPD)",
+              applied: Number(vpdAvg.toFixed(2)),
+              targetMin: 0.8,
+              targetMax: 1.2,
+              unit: "kPa",
+              status: "high",
+              impact: `VPD élevé (${vpdAvg.toFixed(2)} kPa). Stress hydrique foliaire.`,
+              origin: "Environnement (Vent extérieur sec ou fort ensoleillement)"
+            });
+            physiologicalReasons.push("Un VPD supérieur à 1.2 kPa assèche les feuilles. Pour survivre, les tomates ferment partiellement leurs stomates, ce qui stoppe l'entrée de CO2 et bloque la photosynthèse.");
+            actionPlans.push("Activer les brumisateurs ou le cooling de la serre.");
+          } else {
+            audits.push({
+              name: "Déficit de Pression de Vapeur (VPD)",
+              applied: Number(vpdAvg.toFixed(2)),
+              targetMin: 0.8,
+              targetMax: 1.2,
+              unit: "kPa",
+              status: "optimal",
+              impact: "VPD optimal. Excellente activité stomatique.",
+              origin: "Optimal"
+            });
+          }
+        }
+      } else {
+        audits.push({ name: "VPD (Non sélectionné)", applied: null, status: "missing", impact: "Sélectionnez le VPD dans l'onglet 'Sélection des données' pour l'inclure dans l'audit.", origin: "-" });
+      }
+
+      // 2. Température Audit
+      const tempKeys = selectedKeys.filter(k => k.toLowerCase().includes("temp") && !k.toLowerCase().includes("out") && !k.toLowerCase().includes("target") && !k.toLowerCase().includes("water"));
+      if (tempKeys.length > 0) {
+        const tempAvg = getAverage(tempKeys[0]);
+        if (tempAvg !== null) {
+          if (tempAvg > 22.0) {
+            const loss = 0.04;
+            totalLoss += loss;
+            score -= 10;
+            audits.push({
+              name: "Température Moyenne",
+              applied: Number(tempAvg.toFixed(1)),
+              targetMin: 18.0,
+              targetMax: 22.0,
+              unit: "°C",
+              status: "high",
+              impact: `Température trop haute (${tempAvg.toFixed(1)}°C). Respiration excessive.`,
+              origin: "Technique (Consigne de ventilation trop tardive ou chauffage excessif)"
+            });
+            physiologicalReasons.push("Une température moyenne de serre au-dessus de 22.0°C accélère la respiration cellulaire de la plante de tomate. Celle-ci consomme les sucres produits pendant la journée plutôt que de les dédier au développement des fruits.");
+            actionPlans.push("Ajuster les consignes d'ouvertures de toits pour évacuer la chaleur accumulée plus tôt.");
+          } else if (tempAvg < 18.0) {
+            const loss = 0.05;
+            totalLoss += loss;
+            score -= 12;
+            audits.push({
+              name: "Température Moyenne",
+              applied: Number(tempAvg.toFixed(1)),
+              targetMin: 18.0,
+              targetMax: 22.0,
+              unit: "°C",
+              status: "low",
+              impact: `Température trop froide (${tempAvg.toFixed(1)}°C). Croissance ralentie.`,
+              origin: "Technique (Consigne de chauffage trop faible)"
+            });
+            physiologicalReasons.push("Sous 18.0°C de moyenne, la vitesse de division cellulaire chute. La maturation et le développement végétatif accumulent du retard.");
+            actionPlans.push("Rehausser les consignes de chauffage nocturne.");
+          } else {
+            audits.push({
+              name: "Température Moyenne",
+              applied: Number(tempAvg.toFixed(1)),
+              targetMin: 18.0,
+              targetMax: 22.0,
+              unit: "°C",
+              status: "optimal",
+              impact: "Température moyenne journalière idéale.",
+              origin: "Optimal"
+            });
+          }
+        }
+      } else {
+        audits.push({ name: "Température Intérieure (Non sélectionnée)", applied: null, status: "missing", impact: "Sélectionnez une température intérieure pour évaluer les pertes thermiques.", origin: "-" });
+      }
+
+      // 3. Humidité Relative Audit
+      const rhKeys = selectedKeys.filter(k => (k.toLowerCase().includes("rh") || k.toLowerCase().includes("humidity") || k.toLowerCase().includes("hum_measured")) && !k.toLowerCase().includes("out"));
+      if (rhKeys.length > 0) {
+        const rhAvg = getAverage(rhKeys[0]);
+        if (rhAvg !== null) {
+          if (rhAvg > 80) {
+            const loss = 0.03;
+            totalLoss += loss;
+            score -= 8;
+            audits.push({
+              name: "Humidité Relative",
+              applied: Number(rhAvg.toFixed(1)),
+              targetMin: 65,
+              targetMax: 80,
+              unit: "%",
+              status: "high",
+              impact: `Air trop humide (${rhAvg.toFixed(1)}%). Risque de condensation et maladies.`,
+              origin: "Environnement (Météo extérieure pluvieuse / Air saturé)"
+            });
+            physiologicalReasons.push("Une humidité dépassant 80% crée des conditions propices aux champignons pathogènes (mildiou, botrytis). De plus, elle bloque l'évapotranspiration nécessaire aux apports nutritifs.");
+            actionPlans.push("Forcer une ventilation de déshumidification couplée à un léger apport de chaleur.");
+          } else if (rhAvg < 65) {
+            const loss = 0.02;
+            totalLoss += loss;
+            score -= 5;
+            audits.push({
+              name: "Humidité Relative",
+              applied: Number(rhAvg.toFixed(1)),
+              targetMin: 65,
+              targetMax: 80,
+              unit: "%",
+              status: "low",
+              impact: `Air trop sec (${rhAvg.toFixed(1)}%). Risque de dessèchement.`,
+              origin: "Environnement (Fort rayonnement extérieur / Sec)"
+            });
+            physiologicalReasons.push("Un air sec sous 65% augmente brutalement la demande évaporative, ce qui fatigue les tissus foliaires de la tomate.");
+            actionPlans.push("Humidifier la serre (brumisation) pour apaiser le microclimat.");
+          } else {
+            audits.push({
+              name: "Humidité Relative",
+              applied: Number(rhAvg.toFixed(1)),
+              targetMin: 65,
+              targetMax: 80,
+              unit: "%",
+              status: "optimal",
+              impact: "Humidité relative idéale.",
+              origin: "Optimal"
+            });
+          }
+        }
+      } else {
+        audits.push({ name: "Humidité Relative (Non sélectionnée)", applied: null, status: "missing", impact: "Sélectionnez l'humidité intérieure pour auditer l'hygrométrie globale.", origin: "-" });
+      }
+
+      // 4. Substrat / Pain (WC / VWC) Audit
+      const wcKeys = selectedKeys.filter(k => k.toLowerCase().includes("wc") || k.toLowerCase().includes("vwc"));
+      if (wcKeys.length > 0) {
+        const wcAvg = getAverage(wcKeys[0]);
+        if (wcAvg !== null) {
+          if (wcAvg < 62.0) {
+            const loss = 0.08;
+            totalLoss += loss;
+            score -= 22;
+            audits.push({
+              name: "Teneur en Eau du Substrat (WC)",
+              applied: Number(wcAvg.toFixed(1)),
+              targetMin: 62.0,
+              targetMax: 72.0,
+              unit: "%",
+              status: "low",
+              impact: `Dessèchement du pain (${wcAvg.toFixed(1)}%). Stress hydrique racinaire sévère.`,
+              origin: "Technique (Irrigations trop courtes ou espacement temporel trop long)"
+            });
+            physiologicalReasons.push("Un substrat sous 62% d'eau endommage le système racinaire actif de la tomate. Ce stress hydrique empêche le grossissement cellulaire des fruits, favorise le cul noir et bloque la sève.");
+            actionPlans.push("Avancer l'heure du premier arrosage ou augmenter le volume de chaque cycle.");
+          } else if (wcAvg > 72.0) {
+            const loss = 0.03;
+            totalLoss += loss;
+            score -= 10;
+            audits.push({
+              name: "Teneur en Eau du Substrat (WC)",
+              applied: Number(wcAvg.toFixed(1)),
+              targetMin: 62.0,
+              targetMax: 72.0,
+              unit: "%",
+              status: "high",
+              impact: `Saturation d'eau (${wcAvg.toFixed(1)}%). Risque d'asphyxie racinaire.`,
+              origin: "Technique (Irrigation excessive en fin de journée ou drainage bouché)"
+            });
+            physiologicalReasons.push("Un substrat saturé en permanence (>72%) empêche l'oxygène de pénétrer la zone racinaire. Les racines s'asphyxient, augmentant la sensibilité au Pythium.");
+            actionPlans.push("Stopper l'irrigation plus tôt avant le coucher du soleil.");
+          } else {
+            audits.push({
+              name: "Teneur en Eau du Substrat (WC)",
+              applied: Number(wcAvg.toFixed(1)),
+              targetMin: 62.0,
+              targetMax: 72.0,
+              unit: "%",
+              status: "optimal",
+              impact: "Humidité racinaire idéale.",
+              origin: "Optimal"
+            });
+          }
+        }
+      } else {
+        audits.push({ name: "Substrat WC (Non sélectionné)", applied: null, status: "missing", impact: "Sélectionnez le Slab WC pour analyser la perte de gain liée à l'arrosage.", origin: "-" });
+      }
+
+      if (physiologicalReasons.length === 0) {
+        physiologicalReasons.push("Tous les facteurs climatiques et d'irrigation analysés se situent dans la plage optimale d'activité photosynthétique. La plante fonctionne à 100% de ses capacités physiologiques.");
+      }
+      if (actionPlans.length === 0) {
+        actionPlans.push("Conserver la stratégie climatique actuelle. Surveiller les prévisions météorologiques.");
+      }
+
+      const overallStatus = score >= 90 ? "Optimal" : score >= 75 ? "Ajustement requis" : "Alerte Climat";
+      const statusColor = score >= 90 ? "emerald" : score >= 75 ? "amber" : "rose";
+
+      return {
+        dateStr,
+        day: index + 1,
+        status: overallStatus,
+        statusColor,
+        overallScore: Math.max(10, score),
+        potentialGain: Number(totalLoss.toFixed(2)),
+        audits,
+        physiologicalExplanation: physiologicalReasons.join(" "),
+        actionPlan: actionPlans
+      };
+    });
+  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2]);
+
   const brushIndices = useMemo(() => {
     if (!zoomTimeRange || chartData.length === 0) {
       return { start: 0, end: chartData.length - 1 };
@@ -2418,238 +2685,283 @@ export default function AranetUnifiedDashboard() {
               /* Agronomic Analysis Tab Content */
               <div className="flex-1 overflow-y-auto bg-muted/10 p-6 md:p-10 space-y-6 max-h-[calc(100vh-3.5rem)] select-none">
                 {/* Global Performance Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <Card className="border-none shadow-md bg-background rounded-2xl">
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
-                        <Award className="h-5 w-5" />
+                {(() => {
+                  const daysCount = dynamicAgronomicData.length;
+                  if (daysCount === 0) {
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
+                        <Card className="border-none shadow-md bg-background rounded-2xl md:col-span-4 p-8 text-center text-xs text-muted-foreground font-bold">
+                          Aucune donnée disponible pour l'analyse. Veuillez d'abord charger les données dans l'onglet Graphique.
+                        </Card>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Score Agronomique Moyen</p>
-                        <h3 className="text-xl font-black text-foreground">81 / 100</h3>
-                        <p className="text-[10px] text-emerald-500 font-semibold mt-0.5">Niveau satisfaisant</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    );
+                  }
 
-                  <Card className="border-none shadow-md bg-gradient-to-br from-emerald-500/5 to-transparent border border-emerald-500/10 rounded-2xl">
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
-                        <TrendingUp className="h-5 w-5 animate-pulse" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Marge Manquée</p>
-                        <h3 className="text-xl font-black text-foreground">+1.39 €/m²</h3>
-                        <p className="text-[10px] text-emerald-500 font-bold mt-0.5">Optimisation potentielle</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  const avgScore = Math.round(dynamicAgronomicData.reduce((sum, d) => sum + d.overallScore, 0) / daysCount);
+                  const totalLoss = dynamicAgronomicData.reduce((sum, d) => sum + d.potentialGain, 0);
+                  const optimalDays = dynamicAgronomicData.filter(d => d.status === "Optimal").length;
+                  const alertDays = dynamicAgronomicData.filter(d => d.status === "Alerte Climat").length;
 
-                  <Card className="border-none shadow-md bg-background rounded-2xl">
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl">
-                        <CheckCircle2 className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Jours Optimaux</p>
-                        <h3 className="text-xl font-black text-foreground">3 / 10</h3>
-                        <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">Climat de cible parfait</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 w-full">
+                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                        <CardContent className="p-5 flex items-center gap-4">
+                          <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
+                            <Award className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Score Agronomique Moyen</p>
+                            <h3 className="text-xl font-black text-foreground">{avgScore} / 100</h3>
+                            <p className="text-[10px] text-emerald-500 font-semibold mt-0.5">
+                              {avgScore >= 90 ? "Excellent niveau" : avgScore >= 75 ? "Niveau satisfaisant" : "Ajustements urgents requis"}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                  <Card className="border-none shadow-md bg-background rounded-2xl">
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <div className="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
-                        <ShieldAlert className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Alertes Climat</p>
-                        <h3 className="text-xl font-black text-rose-500">2 Jours</h3>
-                        <p className="text-[10px] text-rose-400 font-semibold mt-0.5">Fermeture stomatique</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                      <Card className="border-none shadow-md bg-gradient-to-br from-rose-500/5 to-transparent border border-rose-500/10 rounded-2xl">
+                        <CardContent className="p-5 flex items-center gap-4">
+                          <div className="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
+                            <TrendingDown className="h-5 w-5 animate-pulse" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Perte de Gain Cumulé</p>
+                            <h3 className="text-xl font-black text-rose-600">-{totalLoss.toFixed(2)} €/m²</h3>
+                            <p className="text-[10px] text-rose-400 font-semibold mt-0.5">Perte technique/météo</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                        <CardContent className="p-5 flex items-center gap-4">
+                          <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl">
+                            <CheckCircle2 className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Jours Optimaux</p>
+                            <h3 className="text-xl font-black text-foreground">{optimalDays} / {daysCount}</h3>
+                            <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">Climat de cible atteint</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                        <CardContent className="p-5 flex items-center gap-4">
+                          <div className="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
+                            <ShieldAlert className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Alertes Climat</p>
+                            <h3 className="text-xl font-black text-rose-500">{alertDays} Jours</h3>
+                            <p className="text-[10px] text-rose-400 font-semibold mt-0.5">Fermeture stomatique</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })()}
 
                 {/* Main Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Left: Days list */}
-                  <div className="lg:col-span-1 space-y-3">
-                    <Card className="border-none shadow-md bg-background rounded-2xl">
-                      <CardHeader className="p-5 pb-3">
-                        <CardTitle className="text-sm font-black uppercase tracking-tight flex items-center gap-2">
-                          Historique des Jours
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-5 pt-0 space-y-2">
-                        {AGRONOMIC_DATA.map(d => {
-                          const isActive = d.day === selectedDayNum
-                          const formattedDate = getFormattedDateForDay(d.day)
-                          return (
-                            <button
-                              key={d.day}
-                              onClick={() => setSelectedDayNum(d.day)}
-                              className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between group ${
-                                isActive 
-                                  ? "bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-900/15" 
-                                  : "bg-card border-border/50 hover:bg-slate-50/50 hover:border-slate-300"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                                  isActive ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
-                                }`}>
-                                  J{d.day}
-                                </div>
-                                <div>
-                                  <div className="text-[9px] font-bold text-slate-400 uppercase">{formattedDate}</div>
-                                  <div className={`text-[10px] font-black uppercase ${
-                                    d.statusColor === "emerald" ? "text-emerald-500" : d.statusColor === "amber" ? "text-amber-500" : "text-rose-500"
+                {dynamicAgronomicData.length > 0 ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Left: Days list */}
+                    <div className="lg:col-span-1 space-y-3">
+                      <Card className="border-none shadow-md bg-background rounded-2xl">
+                        <CardHeader className="p-5 pb-3">
+                          <CardTitle className="text-sm font-black uppercase tracking-tight flex items-center gap-2">
+                            Historique des Jours
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-5 pt-0 space-y-2">
+                          {dynamicAgronomicData.map(d => {
+                            const isActive = d.day === selectedDayNum || (selectedDayNum > dynamicAgronomicData.length && d.day === 1)
+                            return (
+                              <button
+                                key={d.day}
+                                onClick={() => setSelectedDayNum(d.day)}
+                                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between group ${
+                                  isActive 
+                                    ? "bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-900/15" 
+                                    : "bg-card border-border/50 hover:bg-slate-50/50 hover:border-slate-300"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                                    isActive ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
                                   }`}>
-                                    {d.status}
+                                    J{d.day}
+                                  </div>
+                                  <div>
+                                    <div className="text-[9px] font-bold text-slate-400 uppercase">{d.dateStr}</div>
+                                    <div className={`text-[10px] font-black uppercase ${
+                                      d.statusColor === "emerald" ? "text-emerald-500" : d.statusColor === "amber" ? "text-amber-500" : "text-rose-500"
+                                    }`}>
+                                      {d.status}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              <div className="text-right">
-                                <div className="text-[9px] font-bold text-slate-400">Potentiel</div>
-                                <div className={`text-xs font-black ${
-                                  isActive ? "text-emerald-300" : "text-emerald-600"
-                                }`}>
-                                  +{d.potentialGain.toFixed(2)} €/m²
+                                <div className="text-right">
+                                  <div className="text-[9px] font-bold text-slate-400">Perte</div>
+                                  <div className={`text-xs font-black ${
+                                    isActive ? "text-rose-300" : "text-rose-600"
+                                  }`}>
+                                    -{d.potentialGain.toFixed(2)} €/m²
+                                  </div>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Right: Selected Day Audit Detail */}
+                    <div className="lg:col-span-2 space-y-6">
+                      {(() => {
+                        const day = dynamicAgronomicData.find(d => d.day === selectedDayNum) || dynamicAgronomicData[0]
+                        return (
+                          <Card className="border-none shadow-md bg-background overflow-hidden rounded-2xl">
+                            <CardHeader className="p-6 pb-3 border-b bg-muted/15 flex flex-row items-center justify-between">
+                              <div>
+                                <CardTitle className="text-sm font-black uppercase tracking-tight">
+                                  Audit du {day.dateStr} — Score : {day.overallScore}/100
+                                </CardTitle>
+                              </div>
+                              <Badge className={`bg-${day.statusColor}-500/10 text-${day.statusColor}-500 border-${day.statusColor}-500/20 font-bold px-2 py-0.5 text-[10px]`}>
+                                {day.status}
+                              </Badge>
+                            </CardHeader>
+                            
+                            <CardContent className="p-6 space-y-6">
+                              {/* Target ranges */}
+                              <div className="space-y-4">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground border-b pb-1.5 flex items-center gap-1.5">
+                                  <Maximize2 className="h-3.5 w-3.5 text-emerald-500" /> Facteurs Limitant le Gain Cumulé
+                                </h4>
+
+                                <div className="space-y-4">
+                                  {day.audits.map((audit) => {
+                                    const isOptimal = audit.status === "optimal"
+                                    const isMissing = audit.status === "missing"
+                                    
+                                    if (isMissing) {
+                                      return (
+                                        <div key={audit.name} className="p-3 rounded-xl bg-muted/10 border border-border/20 border-dashed space-y-1">
+                                          <div className="flex justify-between items-center text-xs opacity-60">
+                                            <span className="font-bold text-muted-foreground">{audit.name}</span>
+                                            <Badge className="font-black text-[9px] bg-muted/40 text-muted-foreground/60 border border-muted-foreground/10">Non surveillé</Badge>
+                                          </div>
+                                          <p className="text-[10px] text-muted-foreground font-semibold mt-1">
+                                            {audit.impact}
+                                          </p>
+                                        </div>
+                                      );
+                                    }
+
+                                    const percentApplied = ((audit.applied - (audit.targetMin - 2)) / ((audit.targetMax + 2) - (audit.targetMin - 2))) * 100
+                                    const clampedPercent = Math.max(5, Math.min(95, percentApplied))
+                                    
+                                    return (
+                                      <div key={audit.name} className="p-3 rounded-xl bg-muted/20 border border-border/50 space-y-2">
+                                        <div className="flex justify-between items-center text-xs">
+                                          <div>
+                                            <span className="font-bold text-foreground">{audit.name}</span>
+                                            <span className="text-[10px] text-muted-foreground font-semibold ml-1.5">
+                                              (Cible : {audit.targetMin} - {audit.targetMax} {audit.unit})
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] text-muted-foreground">Relevé :</span>
+                                            <Badge className={`font-black text-[10px] ${
+                                              audit.status === "optimal" 
+                                                ? "bg-emerald-500 text-white" 
+                                                : "bg-rose-500 text-white"
+                                            }`}>
+                                              {audit.applied} {audit.unit}
+                                            </Badge>
+                                          </div>
+                                        </div>
+
+                                        {/* Slider visual */}
+                                        <div className="relative pt-3 pb-1">
+                                          <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full relative">
+                                            <div 
+                                              className="absolute h-1.5 bg-emerald-400 rounded-full opacity-50" 
+                                              style={{ left: "25%", right: "25%" }} 
+                                            />
+                                            <div 
+                                              className={`absolute h-3 w-3 -top-0.5 rounded-full border border-white shadow-md transition-all ${
+                                                audit.status === "optimal" ? "bg-emerald-500" : "bg-rose-500"
+                                              }`}
+                                              style={{ left: `${clampedPercent}%`, transform: 'translateX(-50%)' }}
+                                            />
+                                          </div>
+                                          
+                                          <div className="flex justify-between text-[8px] font-bold text-slate-400 pt-1.5">
+                                            <span>Bas ({audit.targetMin - 1} {audit.unit})</span>
+                                            <span className="text-emerald-500">Cible Min ({audit.targetMin})</span>
+                                            <span className="text-emerald-500">Cible Max ({audit.targetMax})</span>
+                                            <span>Élevé ({audit.targetMax + 1} {audit.unit})</span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex justify-between items-center text-[10px] font-semibold">
+                                          <p className={isOptimal ? "text-emerald-600" : "text-rose-500"}>
+                                            {isOptimal ? "✓ Performance optimale atteinte." : `✗ ${audit.impact}`}
+                                          </p>
+                                          {!isOptimal && (
+                                            <span className="text-[9px] uppercase font-black text-rose-400 bg-rose-500/5 px-2 py-0.5 rounded-md border border-rose-500/10">
+                                              Origine : {audit.origin}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                               </div>
-                            </button>
-                          )
-                        })}
-                      </CardContent>
-                    </Card>
-                  </div>
 
-                  {/* Right: Selected Day Audit Detail */}
-                  <div className="lg:col-span-2 space-y-6">
-                    {(() => {
-                      const day = AGRONOMIC_DATA.find(d => d.day === selectedDayNum) || AGRONOMIC_DATA[0]
-                      const dayDate = getFormattedDateForDay(day.day)
-                      return (
-                        <Card className="border-none shadow-md bg-background overflow-hidden rounded-2xl">
-                          <CardHeader className="p-6 pb-3 border-b bg-muted/15 flex flex-row items-center justify-between">
-                            <div>
-                              <CardTitle className="text-sm font-black uppercase tracking-tight">
-                                Audit du {dayDate} — Score : {day.overallScore}/100
-                              </CardTitle>
-                            </div>
-                            <Badge className={`bg-${day.statusColor}-500/10 text-${day.statusColor}-500 border-${day.statusColor}-500/20 font-bold px-2 py-0.5 text-[10px]`}>
-                              {day.status}
-                            </Badge>
-                          </CardHeader>
-                          
-                          <CardContent className="p-6 space-y-6">
-                            {/* Target ranges */}
-                            <div className="space-y-4">
-                              <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground border-b pb-1.5 flex items-center gap-1.5">
-                                <Maximize2 className="h-3.5 w-3.5 text-emerald-500" /> Plages de paramètres à optimiser
-                              </h4>
+                              {/* Agronomic / Economic explanations */}
+                              <div className="p-4 bg-slate-900/5 dark:bg-slate-100/5 rounded-xl border border-border/50 flex gap-3">
+                                <div className="p-2 bg-emerald-500 text-white rounded-lg h-fit shrink-0">
+                                  <Leaf className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-black text-foreground uppercase tracking-wider mb-1">Commentaire Physiologique</h4>
+                                  <p className="text-xs text-muted-foreground leading-relaxed font-semibold">
+                                    {day.physiologicalExplanation}
+                                  </p>
+                                </div>
+                              </div>
 
-                              <div className="space-y-4">
-                                {day.audits.map((audit) => {
-                                  const isOptimal = audit.status === "optimal"
-                                  const percentApplied = ((audit.applied - (audit.targetMin - 2)) / ((audit.targetMax + 2) - (audit.targetMin - 2))) * 100
-                                  const clampedPercent = Math.max(5, Math.min(95, percentApplied))
-                                  
-                                  return (
-                                    <div key={audit.name} className="p-3 rounded-xl bg-muted/20 border border-border/50 space-y-2">
-                                      <div className="flex justify-between items-center text-xs">
-                                        <div>
-                                          <span className="font-bold text-foreground">{audit.name}</span>
-                                          <span className="text-[10px] text-muted-foreground font-semibold ml-1.5">
-                                            (Cible : {audit.targetMin} - {audit.targetMax} {audit.unit})
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-[10px] text-muted-foreground">Appliqué :</span>
-                                          <Badge className={`font-black text-[10px] ${
-                                            audit.status === "optimal" 
-                                              ? "bg-emerald-500 text-white" 
-                                              : audit.status === "high" 
-                                                ? "bg-rose-500 text-white" 
-                                                : "bg-blue-500 text-white"
-                                          }`}>
-                                            {audit.applied} {audit.unit}
-                                          </Badge>
-                                        </div>
+                              {/* Step-by-Step Action Plan */}
+                              <div className="space-y-3">
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground border-b pb-1.5 flex items-center gap-1.5">
+                                  <Lightbulb className="h-3.5 w-3.5 text-amber-500" /> Actions Recommandées
+                                </h4>
+                                <ul className="space-y-2">
+                                  {day.actionPlan.map((action, index) => (
+                                    <li key={index} className="flex gap-2.5 items-start text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                      <div className="h-4 w-4 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5">
+                                        {index + 1}
                                       </div>
-
-                                      {/* Slider visual */}
-                                      <div className="relative pt-3 pb-1">
-                                        <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full relative">
-                                          <div 
-                                            className="absolute h-1.5 bg-emerald-400 rounded-full opacity-50" 
-                                            style={{ left: "25%", right: "25%" }} 
-                                          />
-                                          <div 
-                                            className={`absolute h-3 w-3 -top-0.5 rounded-full border border-white shadow-md transition-all ${
-                                              audit.status === "optimal" ? "bg-emerald-500" : audit.status === "high" ? "bg-rose-500" : "bg-blue-500"
-                                            }`}
-                                            style={{ left: `${clampedPercent}%`, transform: 'translateX(-50%)' }}
-                                          />
-                                        </div>
-                                        
-                                        <div className="flex justify-between text-[8px] font-bold text-slate-400 pt-1.5">
-                                          <span>Bas ({audit.targetMin - 1} {audit.unit})</span>
-                                          <span className="text-emerald-500">Cible Min ({audit.targetMin})</span>
-                                          <span className="text-emerald-500">Cible Max ({audit.targetMax})</span>
-                                          <span>Élevé ({audit.targetMax + 1} {audit.unit})</span>
-                                        </div>
-                                      </div>
-
-                                      <p className={`text-[10px] font-semibold ${
-                                        isOptimal ? "text-emerald-600" : "text-rose-500"
-                                      }`}>
-                                        {isOptimal ? "✓ Performance optimale atteinte." : `✗ ${audit.impact}`}
-                                      </p>
-                                    </div>
-                                  )
-                                })}
+                                      <span>{action}</span>
+                                    </li>
+                                  ))}
+                                </ul>
                               </div>
-                            </div>
-
-                            {/* Agronomic / Economic explanations */}
-                            <div className="p-4 bg-slate-900/5 dark:bg-slate-100/5 rounded-xl border border-border/50 flex gap-3">
-                              <div className="p-2 bg-emerald-500 text-white rounded-lg h-fit shrink-0">
-                                <Leaf className="h-4 w-4" />
-                              </div>
-                              <div>
-                                <h4 className="text-xs font-black text-foreground uppercase tracking-wider mb-1">Commentaire Physiologique</h4>
-                                <p className="text-xs text-muted-foreground leading-relaxed font-semibold">
-                                  {day.physiologicalExplanation}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Step-by-Step Action Plan */}
-                            <div className="space-y-3">
-                              <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground border-b pb-1.5 flex items-center gap-1.5">
-                                <Lightbulb className="h-3.5 w-3.5 text-amber-500" /> Plan d&apos;action correctif
-                              </h4>
-                              <ul className="space-y-2">
-                                {day.actionPlan.map((action, index) => (
-                                  <li key={index} className="flex gap-2.5 items-start text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                    <div className="h-4 w-4 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5">
-                                      {index + 1}
-                                    </div>
-                                    <span>{action}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )
-                    })()}
+                            </CardContent>
+                          </Card>
+                        )
+                      })()}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-center p-12 bg-background border border-muted/20 shadow-sm rounded-2xl">
+                    <p className="text-xs text-muted-foreground font-bold uppercase">Aucune donnée chargée pour la période sélectionnée.</p>
+                  </div>
+                )}
               </div>
             )}
           </>
