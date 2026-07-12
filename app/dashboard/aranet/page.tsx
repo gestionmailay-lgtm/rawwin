@@ -1583,6 +1583,18 @@ export default function AranetUnifiedDashboard() {
     });
   }, [selectedKeys, hiddenKeysOnChart, selectedCompartment]);
 
+  const normalizeUnitName = (name: string) => {
+    if (!name) return "";
+    const u = name.trim().toLowerCase();
+    if (u === "celsius" || u === "°c") return "°C";
+    if (u === "procent" || u === "percent" || u === "%") return "%";
+    if (u === "w_m2" || u === "w/m²" || u === "w/m2") return "W/m²";
+    if (u === "joule_cm2" || u === "j/cm²" || u === "j/cm2" || u === "j_cm2" || u === "joules/cm²") return "J/cm²";
+    if (u === "ppm" || u === "pt_ppm") return "ppm";
+    if (u === "ms_cm" || u === "ms/cm") return "mS/cm";
+    return name;
+  };
+
   // Group active sensors into shared axes by unit & side
   const activeYAxes = useMemo(() => {
     const axesMap: {
@@ -1601,10 +1613,7 @@ export default function AranetUnifiedDashboard() {
       const config = metricConfigs[key] || {};
       const axis = config.axis || "left";
       const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
-      let unitName = unitObj.name;
-      if (unitName && unitName.toLowerCase() === "celsius") {
-        unitName = "°C";
-      }
+      const unitName = normalizeUnitName(unitObj.name);
       const axisId = `${axis}-${unitName}`;
       const color = config.color || m.color;
 
@@ -1631,10 +1640,7 @@ export default function AranetUnifiedDashboard() {
     const config = metricConfigs[key] || {};
     const axis = config.axis || "left";
     const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
-    let unitName = unitObj ? unitObj.name : "";
-    if (unitName && unitName.toLowerCase() === "celsius") {
-      unitName = "°C";
-    }
+    const unitName = normalizeUnitName(unitObj ? unitObj.name : "");
     return `${axis}-${unitName}`;
   }, [selectedKeys, metricConfigs]);
 
@@ -1866,8 +1872,8 @@ export default function AranetUnifiedDashboard() {
     const rightCount = activeYAxes.filter(a => a.axis === "right").length;
     return {
       top: 20,
-      left: Math.max(10, leftCount * 45),
-      right: Math.max(10, rightCount * 45),
+      left: Math.max(10, leftCount * 28),
+      right: Math.max(10, rightCount * 28),
       bottom: 0
     };
   }, [activeYAxes]);
@@ -2178,7 +2184,7 @@ export default function AranetUnifiedDashboard() {
                                         stroke={axisColor}
                                         tick={{ fontSize: 8, fill: axisColor }}
                                         domain={[domainMin, domainMax]}
-                                        width={40}
+                                        width={24}
                                         label={{
                                           value: yAxis.unitName,
                                           angle: yAxis.axis === "left" ? -90 : 90,
@@ -2206,10 +2212,7 @@ export default function AranetUnifiedDashboard() {
                                     const m = allMetrics.find(item => item.key === key)!;
                                     const config = metricConfigs[key] || {};
                                     const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
-                                    let unitName = unitObj ? unitObj.name : "";
-                                    if (unitName && unitName.toLowerCase() === "celsius") {
-                                      unitName = "°C";
-                                    }
+                                    const unitName = normalizeUnitName(unitObj ? unitObj.name : "");
                                     const sensorColor = config.color || m.color;
                                     const isSmooth = config.smooth === true || config.smooth === "true";
 
