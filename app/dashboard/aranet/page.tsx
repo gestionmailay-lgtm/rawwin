@@ -1601,7 +1601,10 @@ export default function AranetUnifiedDashboard() {
       const config = metricConfigs[key] || {};
       const axis = config.axis || "left";
       const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
-      const unitName = unitObj.name;
+      let unitName = unitObj.name;
+      if (unitName && unitName.toLowerCase() === "celsius") {
+        unitName = "°C";
+      }
       const axisId = `${axis}-${unitName}`;
       const color = config.color || m.color;
 
@@ -1628,7 +1631,11 @@ export default function AranetUnifiedDashboard() {
     const config = metricConfigs[key] || {};
     const axis = config.axis || "left";
     const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
-    return `${axis}-${unitObj.name}`;
+    let unitName = unitObj ? unitObj.name : "";
+    if (unitName && unitName.toLowerCase() === "celsius") {
+      unitName = "°C";
+    }
+    return `${axis}-${unitName}`;
   }, [selectedKeys, metricConfigs]);
 
   // Tooltip content helper
@@ -2182,7 +2189,10 @@ export default function AranetUnifiedDashboard() {
                                     const m = allMetrics.find(item => item.key === key)!;
                                     const config = metricConfigs[key] || {};
                                     const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
-                                    const unitName = unitObj ? unitObj.name : "";
+                                    let unitName = unitObj ? unitObj.name : "";
+                                    if (unitName && unitName.toLowerCase() === "celsius") {
+                                      unitName = "°C";
+                                    }
                                     const sensorColor = config.color || m.color;
                                     const isSmooth = config.smooth === true || config.smooth === "true";
 
