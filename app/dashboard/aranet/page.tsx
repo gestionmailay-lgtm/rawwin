@@ -1276,13 +1276,18 @@ export default function AranetUnifiedDashboard() {
 
       // 2. Température Audit
       const tempKeys = selectedKeys.filter(k => k.toLowerCase().includes("temp") && !k.toLowerCase().includes("out") && !k.toLowerCase().includes("target") && !k.toLowerCase().includes("water"));
+      const tempOutKeys = selectedKeys.filter(k => k.toLowerCase().includes("temp") && (k.toLowerCase().includes("out") || k.toLowerCase().includes("ext")));
+
       if (tempKeys.length > 0) {
         const tempAvg = getAverage(tempKeys[0]);
+        const tempOutAvg = tempOutKeys.length > 0 ? getAverage(tempOutKeys[0]) : null;
+
         if (tempAvg !== null) {
           if (tempAvg > 22.0) {
             const loss = 0.04;
             totalLoss += loss;
             score -= 10;
+            const isOutsideHotter = tempOutAvg !== null && tempOutAvg > tempAvg;
             audits.push({
               name: "Température Moyenne",
               applied: Number(tempAvg.toFixed(1)),
@@ -1291,10 +1296,22 @@ export default function AranetUnifiedDashboard() {
               unit: "°C",
               status: "high",
               impact: `Température trop haute (${tempAvg.toFixed(1)}°C). Respiration excessive.`,
-              origin: "Technique (Consigne de ventilation trop tardive ou chauffage excessif)"
+              origin: isOutsideHotter
+                ? "Environnement (Canicule extérieure)"
+                : "Technique (Consigne de ventilation trop tardive ou chauffage excessif)"
             });
-            physiologicalReasons.push("Une température moyenne de serre au-dessus de 22.0°C accélère la respiration cellulaire de la plante de tomate. Celle-ci consomme les sucres produits pendant la journée plutôt que de les dédier au développement des fruits.");
-            actionPlans.push("Ajuster les consignes d'ouvertures de toits pour évacuer la chaleur accumulée plus tôt.");
+            if (isOutsideHotter) {
+              physiologicalReasons.push(`Une température moyenne de serre au-dessus de 22.0°C accélère la respiration de la tomate. L'air extérieur étant plus chaud que l'air intérieur (${tempOutAvg?.toFixed(1)}°C vs ${tempAvg.toFixed(1)}°C), la ventilation par ouvrants est inefficace car elle réchaufferait la serre.`);
+              actionPlans.push("Garder les ouvrants restreints pour bloquer l'air chaud externe.");
+              actionPlans.push("Déployer les écrans thermiques ou d'ombrage pour bloquer le rayonnement direct.");
+              actionPlans.push("Activer la brumisation (cooling) pour abaisser la température par évaporation d'eau.");
+            } else {
+              physiologicalReasons.push("Une température moyenne de serre au-dessus de 22.0°C accélère la respiration cellulaire de la tomate, consommant les sucres produits au détriment du développement des fruits.");
+              actionPlans.push("Ajuster les consignes d'ouvertures de toits (ouvrants) pour évacuer la chaleur accumulée plus tôt.");
+              if (tempOutAvg === null) {
+                actionPlans.push("Sélectionnez le capteur de Température Extérieure pour affiner l'audit de ventilation.");
+              }
+            }
           } else if (tempAvg < 18.0) {
             const loss = 0.05;
             totalLoss += loss;
