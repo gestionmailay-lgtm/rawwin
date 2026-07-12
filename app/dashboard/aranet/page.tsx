@@ -1083,9 +1083,16 @@ export default function AranetUnifiedDashboard() {
             series = valData.data || [];
             privaCacheRef.current[cacheKey] = series;
             try {
+              // Clear older query caches from sessionStorage to free up space
+              for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                const k = sessionStorage.key(i);
+                if (k && k.startsWith("priva_query_cache_")) {
+                  sessionStorage.removeItem(k);
+                }
+              }
               sessionStorage.setItem("priva_query_cache_" + cacheKey, JSON.stringify(series));
             } catch (e) {
-              console.error("Failed to write sessionStorage query cache:", e);
+              console.warn("Failed to write sessionStorage query cache (quota limit):", e);
             }
 
             const today = new Date();
