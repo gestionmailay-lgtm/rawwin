@@ -805,6 +805,9 @@ export default function AranetUnifiedDashboard() {
         [field]: value
       }
     }));
+    if (field === "unit") {
+      fetchActiveData();
+    }
   };
 
   const applyGlobalSmoothing = (smooth: boolean) => {
@@ -1058,7 +1061,7 @@ export default function AranetUnifiedDashboard() {
         clearTimeout(fetchTimeoutRef.current);
       }
     };
-  }, [selectedKeys, metricConfigs, startDate, endDate]);
+  }, [selectedKeys, startDate, endDate]);
 
   // Debounced state update to make Brush dragging butter-smooth
   const updateZoomTimeRangeDebounced = useMemo(() => {
