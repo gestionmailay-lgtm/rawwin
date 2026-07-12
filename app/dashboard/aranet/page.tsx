@@ -1294,7 +1294,7 @@ export default function AranetUnifiedDashboard() {
                 <div key={item.dataKey} className="flex flex-col border-t pt-1 border-muted/50 first:border-t-0 first:pt-0">
                   <div className="flex items-center gap-1.5 font-medium">
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-muted-foreground truncate max-w-[100px]">{metric.name} :</span>
+                    <span className="text-muted-foreground truncate max-w-[100px]">{config?.customName || metric.name} :</span>
                     <span className="text-foreground font-bold">{item.value !== undefined ? item.value.toFixed(2) : "N/A"}</span>
                     <span className="text-muted-foreground text-[9px]">{unitName}</span>
                   </div>
@@ -1355,7 +1355,18 @@ export default function AranetUnifiedDashboard() {
                 <Square className="h-3.5 w-3.5 text-gray-300" />
               )}
             </span>
-            <span className="truncate flex-1">{m.name}</span>
+            {isSelected ? (
+              <input
+                type="text"
+                value={config.customName || ""}
+                onChange={(e) => updateMetricConfig(m.key, "customName", e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                placeholder={m.name}
+                className="text-[11px] font-bold bg-transparent border-b border-muted/30 focus:border-primary focus:outline-none w-full max-w-[280px] placeholder:text-muted-foreground/45 placeholder:font-normal text-foreground py-0.5"
+              />
+            ) : (
+              <span className="truncate flex-1">{m.name}</span>
+            )}
           </button>
           
           {/* Custom Color Selector */}
@@ -1678,7 +1689,7 @@ export default function AranetUnifiedDashboard() {
                             }}
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                            {m.name}
+                            {config.customName || m.name}
                           </button>
                         );
                       })}
@@ -1829,7 +1840,7 @@ export default function AranetUnifiedDashboard() {
                                         yAxisId={`${config.axis || "left"}-${unitName}`}
                                         type="monotone"
                                         dataKey={key}
-                                        name={`${m.name} (${unitName})`}
+                                        name={`${config.customName || m.name} (${unitName})`}
                                         stroke={sensorColor}
                                         strokeWidth={1.4}
                                         dot={false}
@@ -1845,7 +1856,7 @@ export default function AranetUnifiedDashboard() {
                                           yAxisId={`${config.axis || "left"}-${unitName}`}
                                           type="monotone"
                                           dataKey={`${key}_raw`}
-                                          name={`${m.name} (Brut)`}
+                                          name={`${config.customName || m.name} (Brut)`}
                                           stroke={sensorColor}
                                           strokeWidth={0.8}
                                           opacity={0.25}
@@ -1913,8 +1924,8 @@ export default function AranetUnifiedDashboard() {
                               <div className="flex flex-wrap gap-1.5">
                                 {leftActiveKeys.map(key => {
                                   const m = allMetrics.find(item => item.key === key)!;
-                                  const label = METRIC_BADGES[key] || key.substring(0, 3);
                                   const config = metricConfigs[key] || {};
+                                  const label = config.customName || METRIC_BADGES[key] || key.substring(0, 3);
                                   const sensorColor = config.color || m.color;
                                   return (
                                     <div 
@@ -1932,8 +1943,8 @@ export default function AranetUnifiedDashboard() {
                               <div className="flex flex-wrap gap-1.5">
                                 {rightActiveKeys.map(key => {
                                   const m = allMetrics.find(item => item.key === key)!;
-                                  const label = METRIC_BADGES[key] || key.substring(0, 3);
                                   const config = metricConfigs[key] || {};
+                                  const label = config.customName || METRIC_BADGES[key] || key.substring(0, 3);
                                   const sensorColor = config.color || m.color;
                                   return (
                                     <div 
