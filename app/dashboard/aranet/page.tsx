@@ -621,7 +621,9 @@ export default function AranetUnifiedDashboard() {
   const [densityPerM2, setDensityPerM2] = useState<number>(2.5);
   const [conversionRatio, setConversionRatio] = useState<number>(1.0);
   const [dailyEvents, setDailyEvents] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" }>({});
+  const [dailyEventsDraft, setDailyEventsDraft] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" }>({});
   const [dailyAdjustedWeights, setDailyAdjustedWeights] = useState<{ [dateStr: string]: number }>({});
+  const [dailyAdjustedWeightsDraft, setDailyAdjustedWeightsDraft] = useState<{ [dateStr: string]: number }>({});
   const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -747,11 +749,15 @@ export default function AranetUnifiedDashboard() {
       }
       const savedEvents = localStorage.getItem("aranet_daily_events");
       if (savedEvents) {
-        setDailyEvents(JSON.parse(savedEvents));
+        const parsed = JSON.parse(savedEvents);
+        setDailyEvents(parsed);
+        setDailyEventsDraft(parsed);
       }
       const savedAdjusted = localStorage.getItem("aranet_daily_adjusted_weights");
       if (savedAdjusted) {
-        setDailyAdjustedWeights(JSON.parse(savedAdjusted));
+        const parsed = JSON.parse(savedAdjusted);
+        setDailyAdjustedWeights(parsed);
+        setDailyAdjustedWeightsDraft(parsed);
       }
       const savedShowAnn = localStorage.getItem("aranet_show_annotations");
       if (savedShowAnn) {
@@ -804,6 +810,22 @@ export default function AranetUnifiedDashboard() {
     setSelectedKeys(prev => 
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
+  };
+
+  const hasUnsavedChanges = useMemo(() => {
+    return JSON.stringify(dailyEvents) !== JSON.stringify(dailyEventsDraft) ||
+           JSON.stringify(dailyAdjustedWeights) !== JSON.stringify(dailyAdjustedWeightsDraft);
+  }, [dailyEvents, dailyEventsDraft, dailyAdjustedWeights, dailyAdjustedWeightsDraft]);
+
+  const handleSaveAdjustments = () => {
+    setDailyEvents(dailyEventsDraft);
+    setDailyAdjustedWeights(dailyAdjustedWeightsDraft);
+    try {
+      localStorage.setItem("aranet_daily_events", JSON.stringify(dailyEventsDraft));
+      localStorage.setItem("aranet_daily_adjusted_weights", JSON.stringify(dailyAdjustedWeightsDraft));
+    } catch (e) {
+      console.error("Failed to save adjustments", e);
+    }
   };
 
   // Helper to toggle custom datapoint from full catalog
@@ -1248,9 +1270,9 @@ export default function AranetUnifiedDashboard() {
         
         // Locate the timestamp and size of the largest drop
         for (let i = 1; i < dayRows.length; i++) {
-          const prevVal = dayRows[i - 1]["plant_weight_gain"];
-          const currVal = dayRows[i]["plant_weight_gain"];
-          if (prevVal !== undefined && currVal !== undefined && !isNaN(prevVal) && !isNaN(currVal)) {
+          const prevVal = Number(dayRows[i - 1]["plant_weight_gain"]);
+          const currVal = Number(dayRows[i]["plant_weight_gain"]);
+          if (!isNaN(prevVal) && !isNaN(currVal)) {
             const diff = currVal - prevVal;
             if (diff < -0.015) { // drop of > 15 g/m²
               const absDiff = Math.abs(diff);
@@ -1269,7 +1291,7 @@ export default function AranetUnifiedDashboard() {
           
           for (let i = 0; i < dayRows.length; i++) {
             if (dayRows[i].time >= dropTimeMs && dayRows[i]["plant_weight_gain"] !== undefined) {
-              dayRows[i]["plant_weight_gain"] += adjKg;
+              dayRows[i]["plant_weight_gain"] = Number(dayRows[i]["plant_weight_gain"]) + adjKg;
             }
           }
         }
@@ -2559,9 +2581,9 @@ export default function AranetUnifiedDashboard() {
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {drops.map(d => {
-                                const eventVal = dailyEvents[d.dateStr] || "none";
-                                const adjVal = dailyAdjustedWeights[d.dateStr] !== undefined 
-                                  ? dailyAdjustedWeights[d.dateStr] 
+                                const eventVal = dailyEventsDraft[d.dateStr] || "none";
+                                const adjVal = dailyAdjustedWeightsDraft[d.dateStr] !== undefined 
+                                  ? dailyAdjustedWeightsDraft[d.dateStr] 
                                   : d.suddenDropVal;
                                 
                                 return (
@@ -2574,7 +2596,7 @@ export default function AranetUnifiedDashboard() {
                                       {/* Dropdown Nature */}
                                       <select
                                         value={eventVal}
-                                        onChange={(e) => setDailyEvents(prev => ({ ...prev, [d.dateStr]: e.target.value as any }))}
+                                        onChange={(e) => setDailyEventsDraft(prev => ({ ...prev, [d.dateStr]: e.target.value as any }))}
                                         className="bg-background border rounded-lg px-2 py-1 text-[10px] font-black uppercase text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                                       >
                                         <option value="none">Aucun</option>
@@ -2587,7 +2609,7 @@ export default function AranetUnifiedDashboard() {
                                         <input
                                           type="number"
                                           value={adjVal}
-                                          onChange={(e) => setDailyAdjustedWeights(prev => ({ 
+                                          onChange={(e) => setDailyAdjustedWeightsDraft(prev => ({ 
                                             ...prev, 
                                             [d.dateStr]: Math.max(0, parseFloat(e.target.value) || 0) 
                                           }))}
@@ -2599,6 +2621,27 @@ export default function AranetUnifiedDashboard() {
                                   </div>
                                 );
                               })}
+                            </div>
+
+                            {/* Save modifications button */}
+                            <div className="flex items-center justify-end border-t pt-3 mt-1.5 gap-2">
+                              {hasUnsavedChanges && (
+                                <span className="text-[10px] font-bold text-amber-500 flex items-center animate-pulse mr-2">
+                                  ⚠️ Modifications non enregistrées
+                                </span>
+                              )}
+                              <Button
+                                size="sm"
+                                disabled={!hasUnsavedChanges}
+                                onClick={handleSaveAdjustments}
+                                className={`font-black text-xs uppercase px-4 py-1.5 rounded-xl transition-all shadow-sm ${
+                                  hasUnsavedChanges 
+                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                                    : "bg-slate-100 dark:bg-slate-800 text-muted-foreground border cursor-not-allowed"
+                                }`}
+                              >
+                                💾 Sauvegarder les modifications
+                              </Button>
                             </div>
                           </div>
                         );
@@ -3051,19 +3094,41 @@ export default function AranetUnifiedDashboard() {
                     <h4 className="text-xs font-black uppercase text-foreground">Paramétrage du Modèle Horticole</h4>
                     <p className="text-[10px] text-muted-foreground font-semibold">Ajustez le coefficient de conversion lumière/biomasse selon vos observations.</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Efficacité de Conversion :</span>
-                    <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-border/40">
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        max="5.0"
-                        value={conversionRatio}
-                        onChange={(e) => setConversionRatio(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
-                        className="w-12 bg-transparent text-center font-mono font-bold text-xs focus:outline-none"
-                      />
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase">g / 100 J/cm²</span>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">Efficacité de Conversion :</span>
+                      <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-border/40">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="5.0"
+                          value={conversionRatio}
+                          onChange={(e) => setConversionRatio(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+                          className="w-12 bg-transparent text-center font-mono font-bold text-xs focus:outline-none"
+                        />
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase">g / 100 J/cm²</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {hasUnsavedChanges && (
+                        <span className="text-[9px] font-bold text-amber-500 flex items-center animate-pulse mr-1">
+                          ⚠️ Non enregistré
+                        </span>
+                      )}
+                      <Button
+                        size="xs"
+                        disabled={!hasUnsavedChanges}
+                        onClick={handleSaveAdjustments}
+                        className={`font-black text-[10px] uppercase px-3 py-1 rounded-lg transition-all shadow-sm ${
+                          hasUnsavedChanges 
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                            : "bg-slate-100 dark:bg-slate-800 text-muted-foreground border cursor-not-allowed"
+                        }`}
+                      >
+                        💾 Valider les corrections
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -3197,13 +3262,13 @@ export default function AranetUnifiedDashboard() {
                               const isActive = d.day === selectedDayNum || (selectedDayNum > dynamicAgronomicData.length && d.day === 1);
                               
                               const handleEventChange = (value: "none" | "harvest" | "thinning") => {
-                                setDailyEvents(prev => ({
+                                setDailyEventsDraft(prev => ({
                                   ...prev,
                                   [d.dateStr]: value
                                 }));
                               };
 
-                              const eventValue = dailyEvents[d.dateStr] || "none";
+                              const eventValue = dailyEventsDraft[d.dateStr] || "none";
 
                               return (
                                 <tr
@@ -3261,8 +3326,8 @@ export default function AranetUnifiedDashboard() {
                                         <div className="flex items-center gap-1 bg-background border rounded-lg px-1.5 py-0.5 shadow-sm w-20">
                                           <input
                                             type="number"
-                                            value={dailyAdjustedWeights[d.dateStr] !== undefined ? dailyAdjustedWeights[d.dateStr] : d.suddenDropVal}
-                                            onChange={(e) => setDailyAdjustedWeights(prev => ({ 
+                                            value={dailyAdjustedWeightsDraft[d.dateStr] !== undefined ? dailyAdjustedWeightsDraft[d.dateStr] : d.suddenDropVal}
+                                            onChange={(e) => setDailyAdjustedWeightsDraft(prev => ({ 
                                               ...prev, 
                                               [d.dateStr]: Math.max(0, parseFloat(e.target.value) || 0) 
                                             }))}
