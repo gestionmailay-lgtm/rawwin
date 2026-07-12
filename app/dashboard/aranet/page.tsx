@@ -730,15 +730,18 @@ export default function AranetUnifiedDashboard() {
       }
       const savedPlants = localStorage.getItem("aranet_plants_on_scale");
       if (savedPlants) {
-        setPlantsOnScale(Number(savedPlants));
+        const val = Number(savedPlants);
+        if (!isNaN(val) && val > 0) setPlantsOnScale(val);
       }
       const savedDensity = localStorage.getItem("aranet_density_per_m2");
       if (savedDensity) {
-        setDensityPerM2(Number(savedDensity));
+        const val = Number(savedDensity);
+        if (!isNaN(val) && val > 0) setDensityPerM2(val);
       }
       const savedRatio = localStorage.getItem("aranet_conversion_ratio");
       if (savedRatio) {
-        setConversionRatio(Number(savedRatio));
+        const val = Number(savedRatio);
+        if (!isNaN(val) && val > 0) setConversionRatio(val);
       }
       const savedEvents = localStorage.getItem("aranet_daily_events");
       if (savedEvents) {
@@ -1517,34 +1520,39 @@ export default function AranetUnifiedDashboard() {
 
       if (weightKeys.length > 0) {
         const key = weightKeys[0];
-        const dayReadings = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key]));
+        const dayReadings = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(Number(r[key])));
         if (dayReadings.length > 0) {
           dayReadings.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-          const firstVal = dayReadings[0][key];
-          const lastVal = dayReadings[dayReadings.length - 1][key];
-          const rawDiffKg = lastVal - firstVal;
+          const firstVal = Number(dayReadings[0][key]);
+          const lastVal = Number(dayReadings[dayReadings.length - 1][key]);
+          
+          if (!isNaN(firstVal) && !isNaN(lastVal)) {
+            const rawDiffKg = lastVal - firstVal;
 
-          // Search for a sudden drop within the day
-          for (let i = 1; i < dayReadings.length; i++) {
-            const prev = dayReadings[i - 1][key];
-            const curr = dayReadings[i][key];
-            const stepDiff = curr - prev; // in kg/m²
-            if (stepDiff < -0.015) { // Drop of > 15 g/m² in a single interval
-              const dropG = Math.abs(stepDiff) * 1000;
-              if (dropG > suddenDropVal) {
-                suddenDropVal = dropG;
-                const dateObj = new Date(dayReadings[i].time);
-                suddenDropTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Search for a sudden drop within the day
+            for (let i = 1; i < dayReadings.length; i++) {
+              const prev = Number(dayReadings[i - 1][key]);
+              const curr = Number(dayReadings[i][key]);
+              if (!isNaN(prev) && !isNaN(curr)) {
+                const stepDiff = curr - prev; // in kg/m²
+                if (stepDiff < -0.015) { // Drop of > 15 g/m² in a single interval
+                  const dropG = Math.abs(stepDiff) * 1000;
+                  if (dropG > suddenDropVal) {
+                    suddenDropVal = dropG;
+                    const dateObj = new Date(dayReadings[i].time);
+                    suddenDropTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  }
+                }
               }
             }
-          }
 
-          // Adjust actual gain if harvest or thinning event is declared
-          const eventType = dailyEvents[dateStr] || "none";
-          if (eventType === "harvest" || eventType === "thinning") {
-            actualGain = (rawDiffKg * 1000) + suddenDropVal;
-          } else {
-            actualGain = rawDiffKg * 1000;
+            // Adjust actual gain if harvest or thinning event is declared
+            const eventType = dailyEvents[dateStr] || "none";
+            if (eventType === "harvest" || eventType === "thinning") {
+              actualGain = (rawDiffKg * 1000) + suddenDropVal;
+            } else {
+              actualGain = rawDiffKg * 1000;
+            }
           }
         }
       }
