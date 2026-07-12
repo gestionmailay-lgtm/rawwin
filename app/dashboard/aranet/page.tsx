@@ -1161,7 +1161,9 @@ export default function AranetUnifiedDashboard() {
       if (hiddenKeysOnChart.includes(k)) return false;
       const m = PLOTTABLE_METRICS.find(item => item.key === k);
       if (m && m.isPriva && m.category.includes("Compartiment")) {
-        return m.category === `Priva - Compartiment ${selectedCompartment}`;
+        if (selectedCompartment !== "all" && m.category !== `Priva - Compartiment ${selectedCompartment}`) {
+          return false;
+        }
       }
       return true;
     });
@@ -1252,10 +1254,12 @@ export default function AranetUnifiedDashboard() {
   const visibleMetrics = PLOTTABLE_METRICS.filter(m => {
     if (!selectedKeys.includes(m.key)) return false;
     // Aranet only exists in Compartment 1
-    if (!m.isPriva && selectedCompartment !== "1") return false;
+    if (!m.isPriva && selectedCompartment !== "1" && selectedCompartment !== "all") return false;
     // Priva compartment metrics must match selectedCompartment
     if (m.isPriva && m.category.includes("Compartiment")) {
-      return m.category === `Priva - Compartiment ${selectedCompartment}`;
+      if (selectedCompartment !== "all" && m.category !== `Priva - Compartiment ${selectedCompartment}`) {
+        return false;
+      }
     }
     return true;
   });
@@ -1263,10 +1267,12 @@ export default function AranetUnifiedDashboard() {
   const hiddenMetrics = PLOTTABLE_METRICS.filter(m => {
     if (selectedKeys.includes(m.key)) return false;
     // Aranet only exists in Compartment 1
-    if (!m.isPriva && selectedCompartment !== "1") return false;
+    if (!m.isPriva && selectedCompartment !== "1" && selectedCompartment !== "all") return false;
     // Priva compartment metrics must match selectedCompartment
     if (m.isPriva && m.category.includes("Compartiment")) {
-      return m.category === `Priva - Compartiment ${selectedCompartment}`;
+      if (selectedCompartment !== "all" && m.category !== `Priva - Compartiment ${selectedCompartment}`) {
+        return false;
+      }
     }
     return true;
   });
@@ -1508,6 +1514,7 @@ export default function AranetUnifiedDashboard() {
               onChange={(e) => setSelectedCompartment(e.target.value)}
               className="text-[10px] font-bold bg-transparent focus:outline-none cursor-pointer h-full"
             >
+              <option value="all">Tous les compartiments (Aranet + Priva)</option>
               <option value="1">Compartiment 1 (Aranet + Priva)</option>
               <option value="2">Compartiment 2 (Priva)</option>
               <option value="3">Compartiment 3 (Priva)</option>
