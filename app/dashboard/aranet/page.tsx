@@ -1851,20 +1851,16 @@ export default function AranetUnifiedDashboard() {
     ));
   };
 
-  // Group active sensors by Y Axis orientation
-  const leftActiveKeys = visibleChartKeys.filter(k => (metricConfigs[k]?.axis || "left") === "left");
-  const rightActiveKeys = visibleChartKeys.filter(k => (metricConfigs[k]?.axis || "left") === "right");
-
   const chartMargin = useMemo(() => {
-    const leftCount = leftActiveKeys.length;
-    const rightCount = rightActiveKeys.length;
+    const leftCount = activeYAxes.filter(a => a.axis === "left").length;
+    const rightCount = activeYAxes.filter(a => a.axis === "right").length;
     return {
       top: 20,
-      left: Math.max(10, leftCount * 35),
-      right: Math.max(10, rightCount * 35),
+      left: Math.max(10, leftCount * 45),
+      right: Math.max(10, rightCount * 45),
       bottom: 0
     };
-  }, [leftActiveKeys.length, rightActiveKeys.length]);
+  }, [activeYAxes]);
 
   if (!mounted) {
     return (
