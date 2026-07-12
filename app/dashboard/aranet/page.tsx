@@ -2024,6 +2024,20 @@ export default function AranetUnifiedDashboard() {
                   {selectedKeys.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 bg-background p-3 rounded-2xl border border-muted/20 shadow-sm shrink-0 animate-in fade-in duration-300">
                       <span className="text-[10px] font-black text-muted-foreground uppercase mr-1">Afficher / Masquer :</span>
+                      <div className="flex items-center gap-1.5 mr-2 shrink-0">
+                        <button
+                          onClick={() => setHiddenKeysOnChart([])}
+                          className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors"
+                        >
+                          Tout afficher
+                        </button>
+                        <button
+                          onClick={() => setHiddenKeysOnChart(selectedKeys)}
+                          className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 transition-colors"
+                        >
+                          Tout masquer
+                        </button>
+                      </div>
                       {selectedKeys.map(key => {
                         const m = allMetrics.find(item => item.key === key);
                         if (!m) return null;
