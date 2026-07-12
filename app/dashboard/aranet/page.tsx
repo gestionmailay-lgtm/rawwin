@@ -25,6 +25,7 @@ import {
   TrendingUp,
   CheckCircle2,
   AlertTriangle,
+  Info,
   Gauge,
   Thermometer,
   Maximize2,
@@ -896,6 +897,12 @@ export default function AranetUnifiedDashboard() {
           const valData = await valRes.json();
           const series = valData.data || [];
 
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (endDateTime.getTime() >= today.getTime()) {
+            setPrivaChartError("Info : L'API Priva n'autorise pas l'accès aux données de la journée en cours en temps réel. Les courbes s'arrêtent à hier 23h59.");
+          }
+
           privaResults = privaKeys.map(key => {
             const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
             const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
@@ -1590,8 +1597,16 @@ export default function AranetUnifiedDashboard() {
                       </CardHeader>
                       <CardContent className="p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
                         {privaChartError && (
-                          <div className="bg-amber-500/10 border border-amber-500/25 text-amber-700 p-2 rounded-xl text-[10px] font-bold flex items-center gap-2 mb-2 shrink-0">
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                          <div className={`border p-2.5 rounded-xl text-[10px] font-bold flex items-center gap-2 mb-2 shrink-0 ${
+                            privaChartError.startsWith("Info")
+                              ? "bg-blue-500/10 border-blue-500/25 text-blue-700"
+                              : "bg-amber-500/10 border-amber-500/25 text-amber-700"
+                          }`}>
+                            {privaChartError.startsWith("Info") ? (
+                              <Info className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            )}
                             <span>{privaChartError}</span>
                           </div>
                         )}
