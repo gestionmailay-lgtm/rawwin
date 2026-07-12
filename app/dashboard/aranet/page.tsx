@@ -23,6 +23,7 @@ import {
   Leaf,
   Award,
   TrendingUp,
+  TrendingDown,
   CheckCircle2,
   AlertTriangle,
   Info,
