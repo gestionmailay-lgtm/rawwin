@@ -73,7 +73,43 @@ const PLOTTABLE_METRICS = [
   { key: "stem_bottom_114", name: "STEM - Bottom", category: "Physiologie", metricId: "114", color: "#ec4899", sensorId: "5249180", units: [{ id: "314", name: "µm" }] },
   { key: "sap_top_114", name: "SAP Flow - top", category: "Physiologie", metricId: "114", color: "#0d9488", sensorId: "5250254", units: [{ id: "314", name: "µm" }] },
   { key: "sap_bottom_114", name: "SAP Flow - bottom", category: "Physiologie", metricId: "114", color: "#14b8a6", sensorId: "5250268", units: [{ id: "314", name: "µm" }] },
-  { key: "sap_ratio_24", name: "Sap Flow ration Top/bottom", category: "Physiologie", metricId: "24", color: "#4f46e5", sensorId: "135267405", units: [{ id: "18", name: "Ratio" }, { id: "123", name: "/" }] }
+  { key: "sap_ratio_24", name: "Sap Flow ration Top/bottom", category: "Physiologie", metricId: "24", color: "#4f46e5", sensorId: "135267405", units: [{ id: "18", name: "Ratio" }, { id: "123", name: "/" }] },
+  
+  // Priva - Météo
+  { key: "priva_temp_out", name: "Priva - Météo Temp Extérieure", category: "Priva - Météo", isPriva: true, variableId: "00000214-0001-0000-0000-0000000042a9", deviceId: "VP9508", deviceGroupId: "none", color: "#f59e0b", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_hum_out", name: "Priva - Météo Hum Extérieure", category: "Priva - Météo", isPriva: true, variableId: "00000214-0001-0000-0000-00000000427e", deviceId: "VP9508", deviceGroupId: "none", color: "#3b82f6", units: [{ id: "procent", name: "%" }] },
+  { key: "priva_irr_out", name: "Priva - Météo Rayonnement Solaire", category: "Priva - Météo", isPriva: true, variableId: "00000214-0001-0000-0000-0000000042fd", deviceId: "VP9508", deviceGroupId: "none", color: "#eab308", units: [{ id: "watt_m2", name: "W/m²" }] },
+  { key: "priva_wind_out", name: "Priva - Météo Vitesse Vent", category: "Priva - Météo", isPriva: true, variableId: "00000214-0001-0000-0000-0000000042ad", deviceId: "VP9508", deviceGroupId: "none", color: "#0d9488", units: [{ id: "mtr_sec", name: "m/s" }] },
+
+  // Priva - Compartiment 1
+  { key: "priva_c1_temp", name: "Priva - C1 Temp Chauffage", category: "Priva - Compartiment 1", isPriva: true, variableId: "0000002c-0001-0001-0000-0000000006f6", deviceId: "VP9508", deviceGroupId: "none", color: "#ef4444", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c1_temp_target", name: "Priva - C1 Consigne Chauffage", category: "Priva - Compartiment 1", isPriva: true, variableId: "0000002c-0001-0001-0000-0000000006e5", deviceId: "VP9508", deviceGroupId: "none", color: "#f87171", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c1_hum", name: "Priva - C1 Humidité Mesurée", category: "Priva - Compartiment 1", isPriva: true, variableId: "000002bb-0001-0000-0000-0000000050f2", deviceId: "VP9508", deviceGroupId: "none", color: "#06b6d4", units: [{ id: "procent", name: "%" }] },
+
+  // Priva - Compartiment 2
+  { key: "priva_c2_temp", name: "Priva - C2 Temp Chauffage", category: "Priva - Compartiment 2", isPriva: true, variableId: "0000002c-0001-0002-0000-0000000006f6", deviceId: "VP9508", deviceGroupId: "none", color: "#f97316", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c2_temp_target", name: "Priva - C2 Consigne Chauffage", category: "Priva - Compartiment 2", isPriva: true, variableId: "0000002c-0001-0002-0000-0000000006e5", deviceId: "VP9508", deviceGroupId: "none", color: "#fb923c", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c2_hum", name: "Priva - C2 Humidité Mesurée", category: "Priva - Compartiment 2", isPriva: true, variableId: "000002bb-0002-0000-0000-0000000050f2", deviceId: "VP9508", deviceGroupId: "none", color: "#0891b2", units: [{ id: "procent", name: "%" }] },
+
+  // Priva - Compartiment 3
+  { key: "priva_c3_temp", name: "Priva - C3 Temp Chauffage", category: "Priva - Compartiment 3", isPriva: true, variableId: "0000002c-0001-0003-0000-0000000006f6", deviceId: "VP9508", deviceGroupId: "none", color: "#ec4899", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c3_temp_target", name: "Priva - C3 Consigne Chauffage", category: "Priva - Compartiment 3", isPriva: true, variableId: "0000002c-0001-0003-0000-0000000006e5", deviceId: "VP9508", deviceGroupId: "none", color: "#f472b6", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c3_hum", name: "Priva - C3 Humidité Mesurée", category: "Priva - Compartiment 3", isPriva: true, variableId: "000002bb-0003-0000-0000-0000000050f2", deviceId: "VP9508", deviceGroupId: "none", color: "#6366f1", units: [{ id: "procent", name: "%" }] },
+
+  // Priva - Compartiment 4
+  { key: "priva_c4_temp", name: "Priva - C4 Temp Chauffage", category: "Priva - Compartiment 4", isPriva: true, variableId: "0000002c-0001-0004-0000-0000000006f6", deviceId: "VP9508", deviceGroupId: "none", color: "#8b5cf6", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c4_temp_target", name: "Priva - C4 Consigne Chauffage", category: "Priva - Compartiment 4", isPriva: true, variableId: "0000002c-0001-0004-0000-0000000006e5", deviceId: "VP9508", deviceGroupId: "none", color: "#a78bfa", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c4_hum", name: "Priva - C4 Humidité Mesurée", category: "Priva - Compartiment 4", isPriva: true, variableId: "000002bb-0004-0000-0000-0000000050f2", deviceId: "VP9508", deviceGroupId: "none", color: "#4f46e5", units: [{ id: "procent", name: "%" }] },
+
+  // Priva - Compartiment 5
+  { key: "priva_c5_temp", name: "Priva - C5 Temp Chauffage", category: "Priva - Compartiment 5", isPriva: true, variableId: "0000002c-0001-0005-0000-0000000006f6", deviceId: "VP9508", deviceGroupId: "none", color: "#10b981", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c5_temp_target", name: "Priva - C5 Consigne Chauffage", category: "Priva - Compartiment 5", isPriva: true, variableId: "0000002c-0001-0005-0000-0000000006e5", deviceId: "VP9508", deviceGroupId: "none", color: "#34d399", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c5_hum", name: "Priva - C5 Humidité Mesurée", category: "Priva - Compartiment 5", isPriva: true, variableId: "000002bb-0005-0000-0000-0000000050f2", deviceId: "VP9508", deviceGroupId: "none", color: "#06b6d4", units: [{ id: "procent", name: "%" }] },
+
+  // Priva - Compartiment 6
+  { key: "priva_c6_temp", name: "Priva - C6 Temp Chauffage", category: "Priva - Compartiment 6", isPriva: true, variableId: "0000002c-0001-0006-0000-0000000006f6", deviceId: "VP9508", deviceGroupId: "none", color: "#6b7280", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c6_temp_target", name: "Priva - C6 Consigne Chauffage", category: "Priva - Compartiment 6", isPriva: true, variableId: "0000002c-0001-0006-0000-0000000006e5", deviceId: "VP9508", deviceGroupId: "none", color: "#9ca3af", units: [{ id: "celsius", name: "°C" }] },
+  { key: "priva_c6_hum", name: "Priva - C6 Humidité Mesurée", category: "Priva - Compartiment 6", isPriva: true, variableId: "000002bb-0006-0000-0000-0000000050f2", deviceId: "VP9508", deviceGroupId: "none", color: "#4b5563", units: [{ id: "procent", name: "%" }] }
 ];
 
 // Abbreviation mapping for the bottom indicator badges
@@ -98,7 +134,30 @@ const METRIC_BADGES: { [key: string]: string } = {
   stem_bottom_114: "Dt2",
   sap_top_114: "St1",
   sap_bottom_114: "St2",
-  sap_ratio_24: "Ratio"
+  sap_ratio_24: "Ratio",
+  
+  priva_temp_out: "P.Tout",
+  priva_hum_out: "P.Hout",
+  priva_irr_out: "P.Irr",
+  priva_wind_out: "P.Vent",
+  priva_c1_temp: "C1.T",
+  priva_c1_temp_target: "C1.Tc",
+  priva_c1_hum: "C1.H",
+  priva_c2_temp: "C2.T",
+  priva_c2_temp_target: "C2.Tc",
+  priva_c2_hum: "C2.H",
+  priva_c3_temp: "C3.T",
+  priva_c3_temp_target: "C3.Tc",
+  priva_c3_hum: "C3.H",
+  priva_c4_temp: "C4.T",
+  priva_c4_temp_target: "C4.Tc",
+  priva_c4_hum: "C4.H",
+  priva_c5_temp: "C5.T",
+  priva_c5_temp_target: "C5.Tc",
+  priva_c5_hum: "C5.H",
+  priva_c6_temp: "C6.T",
+  priva_c6_temp_target: "C6.Tc",
+  priva_c6_hum: "C6.H"
 };
 
 // Simple matrix inversion for small matrices
@@ -708,7 +767,6 @@ export default function AranetUnifiedDashboard() {
     });
   };
 
-  // Fetch data for active metrics
   const fetchActiveData = async () => {
     if (selectedKeys.length === 0) {
       setRawDataMap({});
@@ -717,7 +775,11 @@ export default function AranetUnifiedDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const promises = selectedKeys.map(async (key) => {
+      const aranetKeys = selectedKeys.filter(k => !k.startsWith("priva_"));
+      const privaKeys = selectedKeys.filter(k => k.startsWith("priva_"));
+
+      // 1. Fetch Aranet data in parallel
+      const aranetPromises = aranetKeys.map(async (key) => {
         const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
         const config = metricConfigs[key] || { unit: m.units[0].id, range: "24h", axis: "left" };
         
@@ -755,7 +817,6 @@ export default function AranetUnifiedDashboard() {
           
           Object.keys(readingsByDay).forEach((dateStr) => {
             const dayReadings = readingsByDay[dateStr];
-            // Sort ascending by time to find the earliest reading (midnight baseline)
             dayReadings.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
             
             const baselineObj = dayReadings[0];
@@ -769,7 +830,6 @@ export default function AranetUnifiedDashboard() {
             });
           });
 
-          // Sort back computed readings by time
           computedReadings.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
           readings = computedReadings;
         }
@@ -780,7 +840,60 @@ export default function AranetUnifiedDashboard() {
         };
       });
 
-      const results = await Promise.all(promises);
+      // 2. Fetch Priva data in a single batch
+      let privaResults: { key: string; readings: any[] }[] = [];
+      if (privaKeys.length > 0) {
+        const privaMetricsToQuery = privaKeys.map(k => {
+          const m = PLOTTABLE_METRICS.find(item => item.key === k)!;
+          return {
+            variableId: m.variableId,
+            deviceId: m.deviceId,
+            deviceGroupId: m.deviceGroupId
+          };
+        });
+
+        // Ensure we cap the end date to avoid today midnight 403 restriction
+        let adjustedEnd = endDateTime;
+        const now = new Date();
+        if (adjustedEnd.getTime() >= now.getTime()) {
+          adjustedEnd = new Date(now.getTime() - 3600 * 1000); // 1 hour ago
+        }
+
+        const valRes = await fetch("/api/priva", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startTime: startDateTime.toISOString(),
+            endTime: adjustedEnd.toISOString(),
+            datapoints: privaMetricsToQuery
+          })
+        });
+
+        if (!valRes.ok) {
+          console.error("Priva API Error in fetchActiveData");
+        } else {
+          const valData = await valRes.json();
+          const series = valData.data || [];
+
+          privaResults = privaKeys.map(key => {
+            const m = PLOTTABLE_METRICS.find(item => item.key === key)!;
+            const matchSeries = series.find((s: any) => s.variableId === m.variableId);
+            const readings = matchSeries && matchSeries.values ? matchSeries.values.map((v: any) => ({
+              time: v.time,
+              value: v.value
+            })) : [];
+
+            return {
+              key,
+              readings
+            };
+          });
+        }
+      }
+
+      const aranetResults = await Promise.all(aranetPromises);
+      const results = [...aranetResults, ...privaResults];
+
       const dataMap: { [key: string]: any[] } = {};
       results.forEach(res => {
         dataMap[res.key] = res.readings;
@@ -1174,6 +1287,28 @@ export default function AranetUnifiedDashboard() {
         )}
       </div>
     );
+  };
+
+  // Helper to render grouped metrics in categories
+  const renderGroupedMetrics = (metricsList: any[]) => {
+    const grouped: Record<string, any[]> = {};
+    metricsList.forEach(m => {
+      const cat = m.category || "Autres";
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(m);
+    });
+
+    return Object.entries(grouped).map(([category, items]) => (
+      <div key={category} className="space-y-2 mt-3 border border-muted/20 p-3 rounded-2xl bg-muted/5">
+        <h4 className="text-[10px] font-black uppercase text-primary tracking-wider border-b pb-1 flex items-center justify-between">
+          <span>{category}</span>
+          <span className="text-[8px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{items.length}</span>
+        </h4>
+        <div className="space-y-2 pl-0.5 pt-1">
+          {items.map(renderSensorItem)}
+        </div>
+      </div>
+    ));
   };
 
   // Group active sensors by Y Axis orientation
@@ -1756,13 +1891,13 @@ export default function AranetUnifiedDashboard() {
                             )}
                           </CardTitle>
                         </CardHeader>
-                        <CardContent className="p-4 max-h-[380px] overflow-y-auto space-y-1">
+                        <CardContent className="p-4 max-h-[500px] overflow-y-auto space-y-1">
                           {visibleMetrics.length === 0 ? (
                             <div className="text-center py-8 text-xs text-muted-foreground font-semibold">
                               Aucun capteur activé. Cochez des capteurs dans la liste de droite.
                             </div>
                           ) : (
-                            visibleMetrics.map(renderSensorItem)
+                            renderGroupedMetrics(visibleMetrics)
                           )}
                         </CardContent>
                       </Card>
@@ -1774,13 +1909,13 @@ export default function AranetUnifiedDashboard() {
                             Autres Capteurs Disponibles ({hiddenMetrics.length})
                           </CardTitle>
                         </CardHeader>
-                        <CardContent className="p-4 max-h-[380px] overflow-y-auto space-y-1">
+                        <CardContent className="p-4 max-h-[500px] overflow-y-auto space-y-1">
                           {hiddenMetrics.length === 0 ? (
                             <div className="text-center py-8 text-xs text-emerald-500 font-bold">
                               Tous les capteurs sont actuellement actifs sur le graphique !
                             </div>
                           ) : (
-                            hiddenMetrics.map(renderSensorItem)
+                            renderGroupedMetrics(hiddenMetrics)
                           )}
                         </CardContent>
                       </Card>
