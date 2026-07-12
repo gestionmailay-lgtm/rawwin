@@ -1487,21 +1487,6 @@ export default function AranetUnifiedDashboard() {
         actionPlan: actionPlans
       };
     });
-  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2]);lerte Climat";
-      const statusColor = score >= 90 ? "emerald" : score >= 75 ? "amber" : "rose";
-
-      return {
-        dateStr,
-        day: index + 1,
-        status: overallStatus,
-        statusColor,
-        overallScore: Math.max(10, score),
-        potentialGain: Number(totalLoss.toFixed(2)),
-        audits,
-        physiologicalExplanation: physiologicalReasons.join(" "),
-        actionPlan: actionPlans
-      };
-    });
   }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2]);
 
   const brushIndices = useMemo(() => {
