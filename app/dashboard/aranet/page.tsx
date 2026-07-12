@@ -959,8 +959,21 @@ export default function AranetUnifiedDashboard() {
         let series = [];
         let hasCache = false;
 
-        if (privaCacheRef.current[cacheKey]) {
-          series = privaCacheRef.current[cacheKey];
+        let cachedData = privaCacheRef.current[cacheKey];
+        if (!cachedData) {
+          try {
+            const sessionData = sessionStorage.getItem("priva_query_cache_" + cacheKey);
+            if (sessionData) {
+              cachedData = JSON.parse(sessionData);
+              privaCacheRef.current[cacheKey] = cachedData;
+            }
+          } catch (e) {
+            console.error("Failed to read sessionStorage query cache:", e);
+          }
+        }
+
+        if (cachedData) {
+          series = cachedData;
           hasCache = true;
           console.log("Serving Priva historical data from client-side cache for key:", cacheKey);
           
@@ -1011,6 +1024,11 @@ export default function AranetUnifiedDashboard() {
             const valData = await valRes.json();
             series = valData.data || [];
             privaCacheRef.current[cacheKey] = series;
+            try {
+              sessionStorage.setItem("priva_query_cache_" + cacheKey, JSON.stringify(series));
+            } catch (e) {
+              console.error("Failed to write sessionStorage query cache:", e);
+            }
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
