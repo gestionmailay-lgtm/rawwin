@@ -955,6 +955,10 @@ export default function AranetUnifiedDashboard() {
           if (endDateTime.getTime() >= today.getTime()) {
             setPrivaChartError("Info : L'API Priva n'autorise pas l'accès aux données de la journée en cours en temps réel. Les courbes s'arrêtent à hier 23h59.");
           }
+        } else if (Date.now() < privaLockoutExpiryRef.current) {
+          hasCache = true;
+          const remainingSecs = Math.ceil((privaLockoutExpiryRef.current - Date.now()) / 1000);
+          setPrivaChartError(`Info : Limite d'appels API atteinte. Actualisation automatique en pause (cooldown actif de ${remainingSecs}s pour laisser recharger le quota).`);
         }
 
         if (!hasCache) {
@@ -971,6 +975,11 @@ export default function AranetUnifiedDashboard() {
           if (!valRes.ok) {
             const errDetail = await valRes.json().catch(() => ({}));
             console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
+            
+            if (valRes.status === 429 || valRes.status === 403) {
+              privaLockoutExpiryRef.current = Date.now() + 60000; // Lock out for 60 seconds
+            }
+
             let errMsg = errDetail.error || "Erreur de connexion";
             if (errDetail.details) {
               try {
@@ -1030,6 +1039,7 @@ export default function AranetUnifiedDashboard() {
   // Debounce ref to deduplicate rapid multiple fetches on state change
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const privaCacheRef = useRef<Record<string, any>>({});
+  const privaLockoutExpiryRef = useRef<number>(0);
 
   // Re-fetch when selections, configurations, or date range changes (debounced by 300ms)
   useEffect(() => {
