@@ -473,6 +473,7 @@ export default function AranetUnifiedDashboard() {
   const [privaValues, setPrivaValues] = useState<Record<string, { value: number; time: string; unit: string }>>({});
   const [privaLoading, setPrivaLoading] = useState(false);
   const [privaError, setPrivaError] = useState<string | null>(null);
+  const [privaChartError, setPrivaChartError] = useState<string | null>(null);
   const [privaSearch, setPrivaSearch] = useState("");
 
   const fetchPrivaData = async () => {
@@ -775,6 +776,7 @@ export default function AranetUnifiedDashboard() {
     }
     setLoading(true);
     setError(null);
+    setPrivaChartError(null);
     try {
       const aranetKeys = selectedKeys.filter(k => !k.startsWith("priva_"));
       const privaKeys = selectedKeys.filter(k => k.startsWith("priva_"));
@@ -888,7 +890,7 @@ export default function AranetUnifiedDashboard() {
         if (!valRes.ok) {
           const errDetail = await valRes.json().catch(() => ({}));
           console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
-          setError(`Erreur de l'ordinateur climatique (Status ${valRes.status}): ${errDetail.error || errDetail.details || "Erreur de connexion"}`);
+          setPrivaChartError(`Données Priva indisponibles (Status ${valRes.status}): ${errDetail.error || errDetail.details || "Erreur de connexion"}`);
         } else {
           const valData = await valRes.json();
           const series = valData.data || [];
@@ -1543,6 +1545,12 @@ export default function AranetUnifiedDashboard() {
                         )}
                       </CardHeader>
                       <CardContent className="p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+                        {privaChartError && (
+                          <div className="bg-amber-500/10 border border-amber-500/25 text-amber-700 p-2 rounded-xl text-[10px] font-bold flex items-center gap-2 mb-2 shrink-0">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            <span>{privaChartError}</span>
+                          </div>
+                        )}
                         {error ? (
                           <div className="h-full w-full flex items-center justify-center text-xs text-red-500 font-medium">
                             {error}
