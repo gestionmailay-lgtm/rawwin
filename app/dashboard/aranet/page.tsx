@@ -958,7 +958,6 @@ export default function AranetUnifiedDashboard() {
             readings
           };
         });
-        }
       }
 
       const aranetResults = await Promise.all(aranetPromises);
