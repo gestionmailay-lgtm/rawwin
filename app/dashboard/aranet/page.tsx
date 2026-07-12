@@ -878,7 +878,9 @@ export default function AranetUnifiedDashboard() {
         });
 
         if (!valRes.ok) {
-          console.error("Priva API Error in fetchActiveData");
+          const errDetail = await valRes.json().catch(() => ({}));
+          console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
+          setError(`Erreur de l'ordinateur climatique (Status ${valRes.status}): ${errDetail.error || errDetail.details || "Erreur de connexion"}`);
         } else {
           const valData = await valRes.json();
           const series = valData.data || [];
