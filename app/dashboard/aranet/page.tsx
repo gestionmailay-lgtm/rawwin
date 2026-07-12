@@ -1007,10 +1007,12 @@ export default function AranetUnifiedDashboard() {
         privaResults = privaKeys.map(key => {
           const m = allMetrics.find(item => item.key === key)!;
           const matchSeries = series.find((s: any) => s.datapoint && s.datapoint.variableId === m.variableId);
-          const readings = matchSeries && matchSeries.measurements ? matchSeries.measurements.map((v: any) => ({
-            time: v.timestampUtc,
-            value: parseFloat(v.value)
-          })) : [];
+          const readings = matchSeries && matchSeries.measurements ? matchSeries.measurements
+            .map((v: any) => ({
+              time: v.timestampUtc,
+              value: parseFloat(v.value)
+            }))
+            .filter((v: any) => !isNaN(v.value)) : [];
 
           return {
             key,
@@ -1087,7 +1089,9 @@ export default function AranetUnifiedDashboard() {
     // Apply smoothing if enabled for each sensor
     const smoothedDataMap: { [key: string]: { readings: any[], rawValues: number[] } } = {};
     selectedKeys.forEach((key) => {
-      const readings = rawDataMap[key] || [];
+      let readings = rawDataMap[key] || [];
+      // Clean up values: filter out null, undefined or non-numeric values (NaN)
+      readings = readings.filter((r: any) => r && r.value !== null && r.value !== undefined && !isNaN(Number(r.value)));
       
       const config = metricConfigs[key];
       const isSmooth = config?.smooth === true || config?.smooth === "true";
