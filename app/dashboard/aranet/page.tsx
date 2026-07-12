@@ -524,7 +524,19 @@ export default function AranetUnifiedDashboard() {
 
       if (!valRes.ok) {
         const errJson = await valRes.json().catch(() => ({}));
-        throw new Error(errJson.details || `Erreur Priva API status ${valRes.status}`);
+        let errMsg = `Erreur Priva API (status ${valRes.status})`;
+        if (errJson.details) {
+          try {
+            const nested = JSON.parse(errJson.details);
+            if (nested.message) errMsg = nested.message;
+            else if (nested.error) errMsg = nested.error;
+          } catch {
+            errMsg = errJson.details;
+          }
+        } else if (errJson.error) {
+          errMsg = errJson.error;
+        }
+        throw new Error(errMsg);
       }
 
       const valData = await valRes.json();
