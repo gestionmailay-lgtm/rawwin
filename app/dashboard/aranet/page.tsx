@@ -610,6 +610,7 @@ export default function AranetUnifiedDashboard() {
   const [yRightMax, setYRightMax] = useState<string>("");
   const [plantsOnScale, setPlantsOnScale] = useState<number>(6);
   const [densityPerM2, setDensityPerM2] = useState<number>(2.5);
+  const [conversionRatio, setConversionRatio] = useState<number>(1.0);
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -725,6 +726,10 @@ export default function AranetUnifiedDashboard() {
       if (savedDensity) {
         setDensityPerM2(Number(savedDensity));
       }
+      const savedRatio = localStorage.getItem("aranet_conversion_ratio");
+      if (savedRatio) {
+        setConversionRatio(Number(savedRatio));
+      }
       const savedCustomPriva = localStorage.getItem("aranet_custom_priva_metrics");
       if (savedCustomPriva) {
         savedCustom = JSON.parse(savedCustomPriva);
@@ -758,11 +763,12 @@ export default function AranetUnifiedDashboard() {
       localStorage.setItem("aranet_metric_configs", JSON.stringify(metricConfigs));
       localStorage.setItem("aranet_plants_on_scale", String(plantsOnScale));
       localStorage.setItem("aranet_density_per_m2", String(densityPerM2));
+      localStorage.setItem("aranet_conversion_ratio", String(conversionRatio));
       localStorage.setItem("aranet_custom_priva_metrics", JSON.stringify(customPrivaMetrics));
     } catch (e) {
       console.error("Failed to save configurations", e);
     }
-  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, customPrivaMetrics]);
+  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, conversionRatio, customPrivaMetrics]);
 
   const toggleKey = (key: string) => {
     setSelectedKeys(prev => 
@@ -1458,14 +1464,26 @@ export default function AranetUnifiedDashboard() {
         }
       }
 
-      // Compute radiation sum in J/cm² (1 W/m² avg over 24h = 8.64 J/cm²/day)
-      const radiationSumJcm2 = radAvg !== null ? Math.round(radAvg * 8.64) : 1200;
+      // Look up selected radiation sum key dynamically (in J/cm²)
+      const radSumKey = selectedKeys.find(key => {
+        const config = metricConfigs[key];
+        const unit = config?.unit || "";
+        const m = allMetrics.find(item => item.key === key);
+        return (
+          unit.toLowerCase().includes("j/cm") || 
+          (m && (m.unit.toLowerCase().includes("j/cm") || m.name.toLowerCase().includes("somme de rayonnement") || m.name.toLowerCase().includes("somme de radiation")))
+        );
+      });
 
-      // Yield potential under optimal conditions (1g of fruit per 100 J/cm² = 0.01 g/m² per J/cm²)
-      const yieldPotentialGrams = radiationSumJcm2 * 0.01;
+      const maxVal = radSumKey ? getMax(radSumKey) : null;
+      // Daily radiation sum value directly from the chart (max value of the accumulation)
+      const radiationSumJcm2 = maxVal !== null ? Math.round(maxVal) : null;
+
+      // Yield potential under optimal conditions (g/m²)
+      const yieldPotentialGrams = radiationSumJcm2 !== null ? Number((radiationSumJcm2 * (conversionRatio / 100.0)).toFixed(1)) : null;
 
       // Lost potential in g/m² due to poor crop steering
-      const lostGainGrams = yieldPotentialGrams * (lostPercent / 100);
+      const lostGainGrams = yieldPotentialGrams !== null ? Number((yieldPotentialGrams * (lostPercent / 100)).toFixed(1)) : 0;
 
       if (physiologicalReasons.length === 0) {
         physiologicalReasons.push("L'équilibre thermique, le rapport lumière/température et la pression racinaire nocturne sont optimaux. La tomate exprime son plein potentiel végétatif et génératif.");
@@ -1483,16 +1501,16 @@ export default function AranetUnifiedDashboard() {
         status: overallStatus,
         statusColor,
         overallScore: Math.max(10, score),
-        potentialGain: Number(lostGainGrams.toFixed(1)),
+        potentialGain: lostGainGrams,
         radiationSumJcm2,
-        yieldPotentialGrams: Number(yieldPotentialGrams.toFixed(1)),
+        yieldPotentialGrams,
         lostPercent,
         audits,
         physiologicalExplanation: physiologicalReasons.join(" "),
         actionPlan: actionPlans
       };
     });
-  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2]);
+  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, conversionRatio]);
 
   const brushIndices = useMemo(() => {
     if (!zoomTimeRange || chartData.length === 0) {
@@ -2737,6 +2755,45 @@ export default function AranetUnifiedDashboard() {
             ) : (
               /* Agronomic Analysis Tab Content */
               <div className="flex-1 overflow-y-auto bg-muted/10 p-6 md:p-10 space-y-6 max-h-[calc(100vh-3.5rem)] select-none">
+                {/* Model calibration settings */}
+                <div className="bg-background border border-border p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-sm">
+                  <div className="flex flex-col gap-0.5">
+                    <h4 className="text-xs font-black uppercase text-foreground">Paramétrage du Modèle Horticole</h4>
+                    <p className="text-[10px] text-muted-foreground font-semibold">Ajustez le coefficient de conversion lumière/biomasse selon vos observations.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Efficacité de Conversion :</span>
+                    <div className="flex items-center gap-1.5 bg-muted/30 px-2 py-1 rounded-lg border border-border/40">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="5.0"
+                        value={conversionRatio}
+                        onChange={(e) => setConversionRatio(Math.max(0.1, parseFloat(e.target.value) || 1.0))}
+                        className="w-12 bg-transparent text-center font-mono font-bold text-xs focus:outline-none"
+                      />
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">g / 100 J/cm²</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Warning if radiation sum is not selected in chart data */}
+                {(() => {
+                  const hasRadiationData = dynamicAgronomicData.some(d => d.radiationSumJcm2 !== null);
+                  if (!hasRadiationData) {
+                    return (
+                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold flex items-center gap-3 shadow-sm">
+                        <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+                        <div>
+                          <span>Sélection requise : Veuillez cocher la variable de rayonnement cumulé (ex: <b>Somme de rayonnement global en J/cm²</b>) sous l&apos;onglet <i>Ordinateur Climatique</i> pour activer le calcul dynamique du potentiel de gain et de ses pertes.</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {/* Global Performance Summary Cards */}
                 {(() => {
                   const daysCount = dynamicAgronomicData.length;
@@ -2750,6 +2807,7 @@ export default function AranetUnifiedDashboard() {
                     );
                   }
 
+                  const hasRadiationData = dynamicAgronomicData.some(d => d.radiationSumJcm2 !== null);
                   const avgScore = Math.round(dynamicAgronomicData.reduce((sum, d) => sum + d.overallScore, 0) / daysCount);
                   const totalLoss = dynamicAgronomicData.reduce((sum, d) => sum + d.potentialGain, 0);
                   const optimalDays = dynamicAgronomicData.filter(d => d.status === "Optimal").length;
@@ -2779,9 +2837,14 @@ export default function AranetUnifiedDashboard() {
                           </div>
                           <div>
                             <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider font-black">Potentiel de Gain Cumulé Perdu</p>
-                            <h3 className="text-xl font-black text-rose-600">-{totalLoss.toFixed(1)} g/m²</h3>
+                            <h3 className="text-xl font-black text-rose-600">
+                              {hasRadiationData ? `-${totalLoss.toFixed(1)} g/m²` : "N/A"}
+                            </h3>
                             <p className="text-[9px] text-rose-500 font-bold mt-1 leading-snug">
-                              L&apos;optimisation de la conduite, malgré le climat extérieur, aurait pu faire gagner {totalLoss.toFixed(1)} g/m² supplémentaire.
+                              {hasRadiationData 
+                                ? `L'optimisation de la conduite, malgré le climat extérieur, aurait pu faire gagner ${totalLoss.toFixed(1)} g/m² supplémentaire.`
+                                : "Cochez la variable Somme de Rayonnement (J/cm²) pour afficher le potentiel perdu."
+                              }
                             </p>
                           </div>
                         </CardContent>
@@ -2861,7 +2924,7 @@ export default function AranetUnifiedDashboard() {
                                   <div className={`text-xs font-black ${
                                     isActive ? "text-rose-300" : "text-rose-600"
                                   }`}>
-                                    -{d.potentialGain.toFixed(1)} g/m²
+                                    {d.radiationSumJcm2 !== null ? `-${d.potentialGain.toFixed(1)} g/m²` : "N/A"}
                                   </div>
                                 </div>
                               </button>
@@ -2882,7 +2945,13 @@ export default function AranetUnifiedDashboard() {
                                 <CardTitle className="text-sm font-black uppercase tracking-tight flex flex-col gap-1">
                                   <span>Audit du {day.dateStr} — Score : {day.overallScore}/100</span>
                                   <span className="text-[10px] text-muted-foreground font-bold tracking-wider uppercase mt-0.5">
-                                    Somme de Radiation : <span className="text-primary">{day.radiationSumJcm2} J/cm²</span> | Potentiel Optimal : <span className="text-emerald-600">{day.yieldPotentialGrams} g/m²</span> | Perte : <span className="text-rose-600">-{day.potentialGain} g/m²</span>
+                                    {day.radiationSumJcm2 !== null ? (
+                                      <>
+                                        Somme de Radiation : <span className="text-primary">{day.radiationSumJcm2} J/cm²</span> | Potentiel Optimal : <span className="text-emerald-600">{day.yieldPotentialGrams} g/m²</span> | Perte : <span className="text-rose-600">-{day.potentialGain} g/m²</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-rose-500 font-black">⚠️ Somme de rayonnement (J/cm²) non sélectionnée sur le graphique</span>
+                                    )}
                                   </span>
                                 </CardTitle>
                               </div>
