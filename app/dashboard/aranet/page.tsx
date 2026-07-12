@@ -595,7 +595,16 @@ export default function AranetUnifiedDashboard() {
 
   // Configurations for each metric: unit ID, X-axis range, and Y-axis side
   const [metricConfigs, setMetricConfigs] = useState<{
-    [key: string]: { unit: string; range: string; axis: "left" | "right" };
+    [key: string]: { 
+      unit: string; 
+      range: string; 
+      axis: "left" | "right"; 
+      smooth?: boolean | string; 
+      customName?: string; 
+      color?: string; 
+      sgWindow?: number;
+      [customKey: string]: any;
+    };
   }>({});
 
   const [loading, setLoading] = useState(false);
@@ -611,6 +620,7 @@ export default function AranetUnifiedDashboard() {
   const [plantsOnScale, setPlantsOnScale] = useState<number>(6);
   const [densityPerM2, setDensityPerM2] = useState<number>(2.5);
   const [conversionRatio, setConversionRatio] = useState<number>(1.0);
+  const [dailyEvents, setDailyEvents] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" }>({});
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -730,6 +740,10 @@ export default function AranetUnifiedDashboard() {
       if (savedRatio) {
         setConversionRatio(Number(savedRatio));
       }
+      const savedEvents = localStorage.getItem("aranet_daily_events");
+      if (savedEvents) {
+        setDailyEvents(JSON.parse(savedEvents));
+      }
       const savedCustomPriva = localStorage.getItem("aranet_custom_priva_metrics");
       if (savedCustomPriva) {
         savedCustom = JSON.parse(savedCustomPriva);
@@ -764,11 +778,12 @@ export default function AranetUnifiedDashboard() {
       localStorage.setItem("aranet_plants_on_scale", String(plantsOnScale));
       localStorage.setItem("aranet_density_per_m2", String(densityPerM2));
       localStorage.setItem("aranet_conversion_ratio", String(conversionRatio));
+      localStorage.setItem("aranet_daily_events", JSON.stringify(dailyEvents));
       localStorage.setItem("aranet_custom_priva_metrics", JSON.stringify(customPrivaMetrics));
     } catch (e) {
       console.error("Failed to save configurations", e);
     }
-  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, conversionRatio, customPrivaMetrics]);
+  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, conversionRatio, dailyEvents, customPrivaMetrics]);
 
   const toggleKey = (key: string) => {
     setSelectedKeys(prev => 
@@ -1227,6 +1242,12 @@ export default function AranetUnifiedDashboard() {
         return valid.reduce((sum, r) => sum + r[key], 0) / valid.length;
       };
 
+      const getMax = (key: string) => {
+        const valid = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key])).map(r => r[key]);
+        if (valid.length === 0) return null;
+        return Math.max(...valid);
+      };
+
       const getStatsForTimeRange = (key: string, startHour: number, endHour: number) => {
         const valid = rows.filter(r => {
           if (r[key] === undefined || r[key] === null || isNaN(r[key])) return false;
@@ -1488,6 +1509,46 @@ export default function AranetUnifiedDashboard() {
       // Lost potential in g/m² due to poor crop steering
       const lostGainGrams = yieldPotentialGrams !== null ? Number((yieldPotentialGrams * (lostPercent / 100)).toFixed(1)) : 0;
 
+      // Calculate actual weight gain and detect sudden drops
+      const weightKeys = selectedKeys.filter(k => k === "plant_weight_gain");
+      let actualGain = 0;
+      let suddenDropTime: string | null = null;
+      let suddenDropVal = 0;
+
+      if (weightKeys.length > 0) {
+        const key = weightKeys[0];
+        const dayReadings = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key]));
+        if (dayReadings.length > 0) {
+          dayReadings.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+          const firstVal = dayReadings[0][key];
+          const lastVal = dayReadings[dayReadings.length - 1][key];
+          const rawDiffKg = lastVal - firstVal;
+
+          // Search for a sudden drop within the day
+          for (let i = 1; i < dayReadings.length; i++) {
+            const prev = dayReadings[i - 1][key];
+            const curr = dayReadings[i][key];
+            const stepDiff = curr - prev; // in kg/m²
+            if (stepDiff < -0.015) { // Drop of > 15 g/m² in a single interval
+              const dropG = Math.abs(stepDiff) * 1000;
+              if (dropG > suddenDropVal) {
+                suddenDropVal = dropG;
+                const dateObj = new Date(dayReadings[i].time);
+                suddenDropTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              }
+            }
+          }
+
+          // Adjust actual gain if harvest or thinning event is declared
+          const eventType = dailyEvents[dateStr] || "none";
+          if (eventType === "harvest" || eventType === "thinning") {
+            actualGain = (rawDiffKg * 1000) + suddenDropVal;
+          } else {
+            actualGain = rawDiffKg * 1000;
+          }
+        }
+      }
+
       if (physiologicalReasons.length === 0) {
         physiologicalReasons.push("L'équilibre thermique, le rapport lumière/température et la pression racinaire nocturne sont optimaux. La tomate exprime son plein potentiel végétatif et génératif.");
       }
@@ -1505,6 +1566,9 @@ export default function AranetUnifiedDashboard() {
         statusColor,
         overallScore: Math.max(10, score),
         potentialGain: lostGainGrams,
+        actualGain: Number(actualGain.toFixed(1)),
+        suddenDropTime,
+        suddenDropVal: Number(suddenDropVal.toFixed(1)),
         radiationSumJcm2,
         yieldPotentialGrams,
         lostPercent,
@@ -1513,7 +1577,7 @@ export default function AranetUnifiedDashboard() {
         actionPlan: actionPlans
       };
     });
-  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, conversionRatio]);
+  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, conversionRatio, dailyEvents]);
 
   const brushIndices = useMemo(() => {
     if (!zoomTimeRange || chartData.length === 0) {
@@ -1612,7 +1676,7 @@ export default function AranetUnifiedDashboard() {
       if (!m) return;
       const config = metricConfigs[key] || {};
       const axis = config.axis || "left";
-      const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
+      const unitObj = m.units.find((u: any) => u.id === config.unit) || m.units[0];
       const unitName = normalizeUnitName(unitObj.name);
       const axisId = `${axis}-${unitName}`;
       const color = config.color || m.color;
@@ -1639,7 +1703,7 @@ export default function AranetUnifiedDashboard() {
     if (!m) return undefined;
     const config = metricConfigs[key] || {};
     const axis = config.axis || "left";
-    const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
+    const unitObj = m.units.find((u: any) => u.id === config.unit) || m.units[0];
     const unitName = normalizeUnitName(unitObj ? unitObj.name : "");
     return `${axis}-${unitName}`;
   }, [selectedKeys, metricConfigs]);
@@ -1657,7 +1721,7 @@ export default function AranetUnifiedDashboard() {
               const metric = allMetrics.find(m => m.key === item.dataKey);
               if (!metric) return null;
               const config = metricConfigs[item.dataKey];
-              const unitName = metric.units.find(u => u.id === config?.unit)?.name || "";
+              const unitName = metric.units.find((u: any) => u.id === config?.unit)?.name || "";
 
               return (
                 <div key={item.dataKey} className="flex flex-col border-t pt-1 border-muted/50 first:border-t-0 first:pt-0">
@@ -2209,9 +2273,9 @@ export default function AranetUnifiedDashboard() {
 
                                   {/* lines mapping */}
                                   {visibleChartKeys.flatMap(key => {
-                                    const m = allMetrics.find(item => item.key === key)!;
+                                    const m = allMetrics.find((item: any) => item.key === key)!;
                                     const config = metricConfigs[key] || {};
-                                    const unitObj = m.units.find(u => u.id === config.unit) || m.units[0];
+                                    const unitObj = m.units.find((u: any) => u.id === config.unit) || m.units[0];
                                     const unitName = normalizeUnitName(unitObj ? unitObj.name : "");
                                     const sensorColor = config.color || m.color;
                                     const isSmooth = config.smooth === true || config.smooth === "true";
@@ -2910,61 +2974,116 @@ export default function AranetUnifiedDashboard() {
 
                 {/* Main Grid */}
                 {dynamicAgronomicData.length > 0 ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Left: Days list */}
-                    <div className="lg:col-span-1 space-y-3">
-                      <Card className="border-none shadow-md bg-background rounded-2xl">
-                        <CardHeader className="p-5 pb-3">
-                          <CardTitle className="text-sm font-black uppercase tracking-tight flex items-center gap-2">
-                            Historique des Jours
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-5 pt-0 space-y-2">
-                          {dynamicAgronomicData.map(d => {
-                            const isActive = d.day === selectedDayNum || (selectedDayNum > dynamicAgronomicData.length && d.day === 1)
-                            return (
-                              <button
-                                key={d.day}
-                                onClick={() => setSelectedDayNum(d.day)}
-                                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between group ${
-                                  isActive 
-                                    ? "bg-slate-900 border-slate-900 text-white shadow-md shadow-slate-900/15" 
-                                    : "bg-card border-border/50 hover:bg-slate-50/50 hover:border-slate-300"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                                    isActive ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
-                                  }`}>
-                                    J{d.day}
-                                  </div>
-                                  <div>
-                                    <div className="text-[9px] font-bold text-slate-400 uppercase">{d.dateStr}</div>
-                                    <div className={`text-[10px] font-black uppercase ${
-                                      d.statusColor === "emerald" ? "text-emerald-500" : d.statusColor === "amber" ? "text-amber-500" : "text-rose-500"
+                  <div className="space-y-6 w-full">
+                    {/* Full Width Table Card */}
+                    <Card className="border border-border/80 shadow-md bg-background rounded-2xl overflow-hidden">
+                      <CardHeader className="p-5 pb-3 border-b bg-muted/5">
+                        <CardTitle className="text-xs font-black uppercase tracking-tight flex items-center gap-2">
+                          Tableau de Bord de Performance et Biomasse
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0 overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[950px]">
+                          <thead>
+                            <tr className="border-b bg-muted/20 text-[9px] uppercase font-black text-muted-foreground">
+                              <th className="p-3 pl-5">Jour / Date</th>
+                              <th className="p-3 text-center">Gain Cumulé (g/m²)</th>
+                              <th className="p-3 text-center">Somme de Rayonnement (J/cm²)</th>
+                              <th className="p-3 text-center">Perte de Poids Brutale</th>
+                              <th className="p-3 text-center">Événement Externe</th>
+                              <th className="p-3 text-center">Potentiel Biomasse (g/m²)</th>
+                              <th className="p-3 text-center">Analyse Agro (Score)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dynamicAgronomicData.map(d => {
+                              const isActive = d.day === selectedDayNum || (selectedDayNum > dynamicAgronomicData.length && d.day === 1);
+                              
+                              const handleEventChange = (value: "none" | "harvest" | "thinning") => {
+                                setDailyEvents(prev => ({
+                                  ...prev,
+                                  [d.dateStr]: value
+                                }));
+                              };
+
+                              const eventValue = dailyEvents[d.dateStr] || "none";
+
+                              return (
+                                <tr
+                                  key={d.day}
+                                  onClick={() => setSelectedDayNum(d.day)}
+                                  className={`border-b border-border/30 text-xs font-semibold cursor-pointer transition-all hover:bg-slate-50/50 ${
+                                    isActive ? "bg-slate-900/5 dark:bg-slate-100/5 font-bold" : ""
+                                  }`}
+                                >
+                                  {/* Date / Day */}
+                                  <td className="p-3 pl-5 flex items-center gap-2.5">
+                                    <div className={`h-6 w-6 rounded-lg flex items-center justify-center font-bold text-[9px] ${
+                                      isActive ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-muted text-muted-foreground"
                                     }`}>
-                                      {d.status}
+                                      J{d.day}
                                     </div>
-                                  </div>
-                                </div>
+                                    <span className="font-bold text-[11px]">{d.dateStr}</span>
+                                  </td>
 
-                                <div className="text-right">
-                                  <div className="text-[9px] font-bold text-slate-400">Perte</div>
-                                  <div className={`text-xs font-black ${
-                                    isActive ? "text-rose-300" : "text-rose-600"
-                                  }`}>
-                                    {d.radiationSumJcm2 !== null ? `-${d.potentialGain.toFixed(1)} g/m²` : "N/A"}
-                                  </div>
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </CardContent>
-                      </Card>
-                    </div>
+                                  {/* Gain Cumulé */}
+                                  <td className="p-3 text-center font-mono font-bold text-emerald-600 text-[11px]">
+                                    {d.actualGain > 0 ? `+${d.actualGain}` : d.actualGain} g/m²
+                                  </td>
 
-                    {/* Right: Selected Day Audit Detail */}
-                    <div className="lg:col-span-2 space-y-6">
+                                  {/* Rayonnement */}
+                                  <td className="p-3 text-center font-mono text-primary font-bold text-[11px]">
+                                    {d.radiationSumJcm2 !== null ? `${d.radiationSumJcm2} J/cm²` : "N/A"}
+                                  </td>
+
+                                  {/* Perte Brutale */}
+                                  <td className="p-3 text-center text-[10px]">
+                                    {d.suddenDropVal > 0 ? (
+                                      <span className="text-rose-600 font-bold bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/10 inline-block font-mono">
+                                        {d.suddenDropTime} : -{d.suddenDropVal} g/m²
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground opacity-60">Aucune</span>
+                                    )}
+                                  </td>
+
+                                  {/* Événement Externe Dropdown */}
+                                  <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                    <select
+                                      value={eventValue}
+                                      onChange={(e) => handleEventChange(e.target.value as any)}
+                                      className="bg-background border rounded-lg px-2 py-1 text-[10px] font-black uppercase text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer shadow-sm"
+                                    >
+                                      <option value="none">Aucun</option>
+                                      <option value="harvest">Récolte</option>
+                                      <option value="thinning">Effeuillage</option>
+                                    </select>
+                                  </td>
+
+                                  {/* Potentiel Biomasse */}
+                                  <td className="p-3 text-center font-mono font-bold text-slate-700 dark:text-slate-300 text-[11px]">
+                                    {d.yieldPotentialGrams !== null ? `${d.yieldPotentialGrams} g/m²` : "N/A"}
+                                  </td>
+
+                                  {/* Analyse Agro */}
+                                  <td className="p-3 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                      <span className={`inline-block w-1.5 h-1.5 rounded-full bg-${d.statusColor}-500`} />
+                                      <Badge className={`font-black text-[9px] bg-${d.statusColor}-500/10 text-${d.statusColor}-500 border-${d.statusColor}-500/20`}>
+                                        {d.overallScore}/100
+                                      </Badge>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </CardContent>
+                    </Card>
+
+                    {/* Selected Day Audit Detail */}
+                    <div className="w-full space-y-6">
                       {(() => {
                         const day = dynamicAgronomicData.find(d => d.day === selectedDayNum) || dynamicAgronomicData[0]
                         return (

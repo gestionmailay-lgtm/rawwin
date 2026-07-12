@@ -17,7 +17,7 @@ let cachedTokenExpiry: number = 0;
 async function getPrivaToken(forceFresh = false): Promise<string> {
   // If token is still valid and we are not forcing a fresh one, return it
   if (!forceFresh && cachedToken && Date.now() < cachedTokenExpiry) {
-    return cachedToken;
+    return cachedToken as string;
   }
 
   if (!CLIENT_SECRET) {
@@ -51,7 +51,7 @@ async function getPrivaToken(forceFresh = false): Promise<string> {
   const expiresIn = tokenData.expires_in || 3600;
   cachedTokenExpiry = Date.now() + (expiresIn - 300) * 1000;
 
-  return cachedToken;
+  return cachedToken as string;
 }
 
 // Wrapper fetch utility that clears cache and retries once on 401/403 errors
