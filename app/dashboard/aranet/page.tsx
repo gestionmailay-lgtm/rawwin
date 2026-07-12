@@ -904,7 +904,17 @@ export default function AranetUnifiedDashboard() {
         if (!valRes.ok) {
           const errDetail = await valRes.json().catch(() => ({}));
           console.error("Priva API Error in fetchActiveData:", valRes.status, errDetail);
-          setPrivaChartError(`Données Priva indisponibles (Status ${valRes.status}): ${errDetail.error || errDetail.details || "Erreur de connexion"}`);
+          let errMsg = errDetail.error || "Erreur de connexion";
+          if (errDetail.details) {
+            try {
+              const nested = JSON.parse(errDetail.details);
+              if (nested.message) errMsg = nested.message;
+              else if (nested.error) errMsg = nested.error;
+            } catch {
+              errMsg = errDetail.details;
+            }
+          }
+          setPrivaChartError(`Données Priva indisponibles (Status ${valRes.status}) : ${errMsg}`);
         } else {
           const valData = await valRes.json();
           const series = valData.data || [];
