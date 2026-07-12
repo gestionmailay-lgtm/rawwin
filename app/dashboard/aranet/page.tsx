@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { 
   Card, 
@@ -919,11 +919,24 @@ export default function AranetUnifiedDashboard() {
     }
   };
 
-  // Re-fetch when selections, configurations, or date range changes
+  // Debounce ref to deduplicate rapid multiple fetches on state change
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Re-fetch when selections, configurations, or date range changes (debounced by 300ms)
   useEffect(() => {
     if (Object.keys(metricConfigs).length > 0) {
-      fetchActiveData();
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+      fetchTimeoutRef.current = setTimeout(() => {
+        fetchActiveData();
+      }, 300);
     }
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
   }, [selectedKeys, metricConfigs, startDate, endDate]);
 
   // Debounced state update to make Brush dragging butter-smooth
