@@ -1,4 +1,5 @@
 import { Metadata } from "next"
+import Image from "next/image"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -74,11 +75,15 @@ export default async function DashboardPage() {
     <div className="flex min-h-screen w-full flex-col bg-muted/20">
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background px-6 shadow-sm">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="bg-primary/10 p-1.5 rounded-lg">
-              <LayoutDashboard className="h-5 w-5 text-primary" />
-            </div>
-            <h1 className="text-xl font-bold text-primary">Rawwin</h1>
+          <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
+            <Image
+              src="/logo.png"
+              alt="Smart Fields"
+              width={160}
+              height={90}
+              className="h-9 w-auto object-contain"
+              priority
+            />
           </Link>
           <span className="text-sm text-muted-foreground">/</span>
           <span className="text-sm font-medium">Marchés & Stratégies</span>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   Card, 
   CardContent, 
@@ -2297,11 +2298,18 @@ export default function AranetUnifiedDashboard() {
       {/* Header */}
       <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background px-4 shadow-sm shrink-0">
         <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <div className="bg-primary/10 p-1.5 rounded-lg">
               <ArrowLeft className="h-4.5 w-4.5 text-primary" />
             </div>
-            <h1 className="text-lg font-bold text-primary">Rawwin</h1>
+            <Image
+              src="/logo.png"
+              alt="Smart Fields"
+              width={140}
+              height={80}
+              className="h-8 w-auto object-contain"
+              priority
+            />
           </Link>
           <span className="text-xs text-muted-foreground">/</span>
           
