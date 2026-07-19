@@ -14,6 +14,28 @@ const CACHE_PATH = path.resolve(process.cwd(), "scratch", "priva-datapoints-cach
 let cachedToken: string | null = null;
 let cachedTokenExpiry: number = 0;
 
+// Simple in-memory cache helper for Priva POST requests
+interface PrivaCacheEntry {
+  data: any;
+  expiry: number;
+}
+const privaDataCache = new Map<string, PrivaCacheEntry>();
+
+function getFromPrivaCache(key: string): any | null {
+  const entry = privaDataCache.get(key);
+  if (entry && Date.now() < entry.expiry) {
+    return entry.data;
+  }
+  return null;
+}
+
+function setToPrivaCache(key: string, data: any, ttlSeconds: number) {
+  privaDataCache.set(key, {
+    data,
+    expiry: Date.now() + ttlSeconds * 1000
+  });
+}
+
 async function getPrivaToken(forceFresh = false): Promise<string> {
   // If token is still valid and we are not forcing a fresh one, return it
   if (!forceFresh && cachedToken && Date.now() < cachedTokenExpiry) {
@@ -158,6 +180,12 @@ export async function POST(request: NextRequest) {
       body.endTime = body.endTime || yesterdayMidnight.toISOString();
     }
 
+    const cacheKey = JSON.stringify(body);
+    const cachedData = getFromPrivaCache(cacheKey);
+    if (cachedData) {
+      return NextResponse.json(cachedData);
+    }
+
     const url = `https://horti-api.priva.com/api/sites/${SITE_ID}/data`;
     const res = await fetchPrivaWithRetry(url, {
       method: "POST",
@@ -175,6 +203,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await res.json();
+    setToPrivaCache(cacheKey, data, 300); // 5 minutes cache
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Priva Proxy POST Error:", error);

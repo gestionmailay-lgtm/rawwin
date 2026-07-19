@@ -11,12 +11,40 @@ const headers = {
   "Accept": "application/json"
 };
 
+// Simple in-memory cache helper
+interface CacheEntry {
+  data: any;
+  expiry: number;
+}
+const aranetCache = new Map<string, CacheEntry>();
+
+function getFromCache(key: string): any | null {
+  const entry = aranetCache.get(key);
+  if (entry && Date.now() < entry.expiry) {
+    return entry.data;
+  }
+  return null;
+}
+
+function setToCache(key: string, data: any, ttlSeconds: number) {
+  aranetCache.set(key, {
+    data,
+    expiry: Date.now() + ttlSeconds * 1000
+  });
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const action = searchParams.get("action") || "summary";
 
   try {
     if (action === "summary") {
+      const cacheKey = "summary_cache";
+      const cachedData = getFromCache(cacheKey);
+      if (cachedData) {
+        return NextResponse.json(cachedData);
+      }
+
       // 1. Fetch sensors list
       const sensorsRes = await fetch(`${BASE_URL}/sensors`, { headers });
       if (!sensorsRes.ok) throw new Error(`Failed to fetch sensors: ${sensorsRes.statusText}`);
@@ -100,11 +128,13 @@ export async function GET(request: NextRequest) {
         };
       });
 
-      return NextResponse.json({
+      const responseData = {
         success: true,
         sensors: combinedSensors,
         timestamp: new Date().toISOString()
-      });
+      };
+      setToCache(cacheKey, responseData, 60);
+      return NextResponse.json(responseData);
     } 
     
     if (action === "history") {
@@ -112,6 +142,12 @@ export async function GET(request: NextRequest) {
       const hours = searchParams.get("hours");
       const days = searchParams.get("days");
       const unitId = searchParams.get("unit");
+
+      const historyCacheKey = `history_${sensorId}_${hours || ""}_${days || ""}_${unitId || ""}`;
+      const cachedHistory = getFromCache(historyCacheKey);
+      if (cachedHistory) {
+        return NextResponse.json(cachedHistory);
+      }
 
       let historyUrl = `${BASE_URL}/measurements/history`;
       const params = new URLSearchParams();
@@ -150,11 +186,13 @@ export async function GET(request: NextRequest) {
       if (!historyRes.ok) throw new Error(`Failed to fetch history: ${historyRes.statusText}`);
       const historyData = await historyRes.json();
 
-      return NextResponse.json({
+      const responseHistoryData = {
         success: true,
         readings: historyData.readings || [],
         timestamp: new Date().toISOString()
-      });
+      };
+      setToCache(historyCacheKey, responseHistoryData, 300); // 5 minutes cache
+      return NextResponse.json(responseHistoryData);
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

@@ -7,7 +7,8 @@ import {
   CardContent, 
   CardDescription, 
   CardHeader, 
-  CardTitle 
+  CardTitle,
+  CardFooter
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -161,6 +162,64 @@ const METRIC_BADGES: { [key: string]: string } = {
   priva_c6_temp_target: "C6.Tc",
   priva_c6_hum: "C6.H"
 };
+
+function safeSetSessionStorage(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch (e: any) {
+    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014) {
+      console.warn("Storage quota exceeded, clearing cached queries...");
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const k = sessionStorage.key(i);
+          if (k && (k.startsWith("aranet_query_cache_") || k.startsWith("priva_query_cache_"))) {
+            sessionStorage.removeItem(k);
+          }
+        }
+        sessionStorage.setItem(key, value);
+      } catch (retryErr) {
+        console.warn("Failed to set item in sessionStorage even after clearing caches:", retryErr);
+      }
+    } else {
+      console.warn("Failed to write to sessionStorage:", e);
+    }
+  }
+}
+
+function getStableDateStr(d: Date) {
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function normalizeDateKey(key: string): string {
+  if (!key || typeof key !== "string") return key;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(key)) {
+    return key;
+  }
+  const ymd = key.match(/^(\d{4})[-/.](\d{2})[-/.](\d{2})$/);
+  if (ymd) {
+    return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+  }
+  const dmyDots = key.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dmyDots) {
+    return `${dmyDots[1]}/${dmyDots[2]}/${dmyDots[3]}`;
+  }
+  const matchSlash = key.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (matchSlash) {
+    const p1 = Number(matchSlash[1]);
+    const p2 = Number(matchSlash[2]);
+    const year = matchSlash[3];
+    if (p2 > 12 && p1 <= 12) {
+      return `${String(p2).padStart(2, '0')}/${String(p1).padStart(2, '0')}/${year}`;
+    } else {
+      return `${String(p1).padStart(2, '0')}/${String(p2).padStart(2, '0')}/${year}`;
+    }
+  }
+  return key;
+}
+
 
 // Simple matrix inversion for small matrices
 function invertMatrix(M: number[][]): number[][] | null {
@@ -620,11 +679,17 @@ export default function AranetUnifiedDashboard() {
   const [plantsOnScale, setPlantsOnScale] = useState<number>(6);
   const [densityPerM2, setDensityPerM2] = useState<number>(2.5);
   const [conversionRatio, setConversionRatio] = useState<number>(1.0);
-  const [dailyEvents, setDailyEvents] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" }>({});
-  const [dailyEventsDraft, setDailyEventsDraft] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" }>({});
+  const [dailyEvents, setDailyEvents] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" | "descent" }>({});
+  const [dailyEventsDraft, setDailyEventsDraft] = useState<{ [dateStr: string]: "none" | "harvest" | "thinning" | "descent" }>({});
   const [dailyAdjustedWeights, setDailyAdjustedWeights] = useState<{ [dateStr: string]: number }>({});
   const [dailyAdjustedWeightsDraft, setDailyAdjustedWeightsDraft] = useState<{ [dateStr: string]: number }>({});
   const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
+  const [validatingDropDate, setValidatingDropDate] = useState<string | null>(null);
+  const [timeStep, setTimeStep] = useState<string>("auto");
+  const [manualDrops, setManualDrops] = useState<{ [dateStr: string]: { suddenDropTime: string; suddenDropVal: number; suggestedCorrectionGrams: number } }>({});
+  const [newManualDropDate, setNewManualDropDate] = useState("");
+  const [newManualDropTime, setNewManualDropTime] = useState("12:00");
+  const [newManualDropVal, setNewManualDropVal] = useState("100");
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -750,18 +815,34 @@ export default function AranetUnifiedDashboard() {
       const savedEvents = localStorage.getItem("aranet_daily_events");
       if (savedEvents) {
         const parsed = JSON.parse(savedEvents);
-        setDailyEvents(parsed);
-        setDailyEventsDraft(parsed);
+        const migrated: any = {};
+        Object.keys(parsed).forEach(k => {
+          migrated[normalizeDateKey(k)] = parsed[k];
+        });
+        setDailyEvents(migrated);
+        setDailyEventsDraft(migrated);
       }
       const savedAdjusted = localStorage.getItem("aranet_daily_adjusted_weights");
       if (savedAdjusted) {
         const parsed = JSON.parse(savedAdjusted);
-        setDailyAdjustedWeights(parsed);
-        setDailyAdjustedWeightsDraft(parsed);
+        const migrated: any = {};
+        Object.keys(parsed).forEach(k => {
+          migrated[normalizeDateKey(k)] = parsed[k];
+        });
+        setDailyAdjustedWeights(migrated);
+        setDailyAdjustedWeightsDraft(migrated);
       }
       const savedShowAnn = localStorage.getItem("aranet_show_annotations");
       if (savedShowAnn) {
         setShowAnnotations(savedShowAnn === "true");
+      }
+      const savedTimeStep = localStorage.getItem("aranet_time_step");
+      if (savedTimeStep) {
+        setTimeStep(savedTimeStep);
+      }
+      const savedManualDrops = localStorage.getItem("aranet_manual_drops");
+      if (savedManualDrops) {
+        setManualDrops(JSON.parse(savedManualDrops));
       }
       const savedCustomPriva = localStorage.getItem("aranet_custom_priva_metrics");
       if (savedCustomPriva) {
@@ -801,10 +882,12 @@ export default function AranetUnifiedDashboard() {
       localStorage.setItem("aranet_daily_adjusted_weights", JSON.stringify(dailyAdjustedWeights));
       localStorage.setItem("aranet_show_annotations", String(showAnnotations));
       localStorage.setItem("aranet_custom_priva_metrics", JSON.stringify(customPrivaMetrics));
+      localStorage.setItem("aranet_time_step", timeStep);
+      localStorage.setItem("aranet_manual_drops", JSON.stringify(manualDrops));
     } catch (e) {
       console.error("Failed to save configurations", e);
     }
-  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, conversionRatio, dailyEvents, dailyAdjustedWeights, showAnnotations, customPrivaMetrics]);
+  }, [selectedKeys, metricConfigs, isLoaded, plantsOnScale, densityPerM2, conversionRatio, dailyEvents, dailyAdjustedWeights, showAnnotations, customPrivaMetrics, timeStep, manualDrops]);
 
   const toggleKey = (key: string) => {
     setSelectedKeys(prev => 
@@ -826,6 +909,40 @@ export default function AranetUnifiedDashboard() {
     } catch (e) {
       console.error("Failed to save adjustments", e);
     }
+  };
+
+  const handleAddManualDrop = () => {
+    if (!newManualDropDate) return;
+    const val = parseFloat(newManualDropVal) || 0;
+    setManualDrops(prev => {
+      const updated = {
+        ...prev,
+        [newManualDropDate]: {
+          suddenDropTime: newManualDropTime,
+          suddenDropVal: val,
+          suggestedCorrectionGrams: val
+        }
+      };
+      localStorage.setItem("aranet_manual_drops", JSON.stringify(updated));
+      return updated;
+    });
+    setDailyEventsDraft(prev => ({
+      ...prev,
+      [newManualDropDate]: "harvest"
+    }));
+    setDailyAdjustedWeightsDraft(prev => ({
+      ...prev,
+      [newManualDropDate]: val
+    }));
+    setDailyEvents(prev => ({
+      ...prev,
+      [newManualDropDate]: "harvest"
+    }));
+    setDailyAdjustedWeights(prev => ({
+      ...prev,
+      [newManualDropDate]: val
+    }));
+    setNewManualDropDate("");
   };
 
   // Helper to toggle custom datapoint from full catalog
@@ -922,14 +1039,34 @@ export default function AranetUnifiedDashboard() {
         const m = allMetrics.find(item => item.key === key)!;
         const config = metricConfigs[key] || { unit: m.units[0].id, range: "24h", axis: "left" };
         
-        const res = await fetch(
-          `/api/aranet?action=history&sensor=${m.sensorId}&days=${apiDaysRequested}&unit=${config.unit}`
-        );
-        if (!res.ok) throw new Error(`Erreur pour ${m.name}`);
-        const resData = await res.json();
-        if (!resData.success) throw new Error(resData.error || `Erreur pour ${m.name}`);
+        const cacheKey = `aranet_${m.sensorId}_${apiDaysRequested}_${config.unit}`;
+        let readingsData = aranetCacheRef.current[cacheKey];
+        if (!readingsData) {
+          try {
+            const sessionData = sessionStorage.getItem("aranet_query_cache_" + cacheKey);
+            if (sessionData) {
+              readingsData = JSON.parse(sessionData);
+              aranetCacheRef.current[cacheKey] = readingsData;
+            }
+          } catch (e) {
+            console.error("Failed to read sessionStorage for Aranet:", e);
+          }
+        }
+
+        if (!readingsData) {
+          const res = await fetch(
+            `/api/aranet?action=history&sensor=${m.sensorId}&days=${apiDaysRequested}&unit=${config.unit}`
+          );
+          if (!res.ok) throw new Error(`Erreur pour ${m.name}`);
+          const resData = await res.json();
+          if (!resData.success) throw new Error(resData.error || `Erreur pour ${m.name}`);
+          readingsData = resData.readings || [];
+          
+          aranetCacheRef.current[cacheKey] = readingsData;
+          safeSetSessionStorage("aranet_query_cache_" + cacheKey, JSON.stringify(readingsData));
+        }
         
-        let readings = (resData.readings || []).filter((r: any) => r.metric === m.metricId);
+        let readings = readingsData.filter((r: any) => r.metric === m.metricId).map((r: any) => ({ ...r }));
 
         // Filter readings client-side based on the selected date range
         const startMs = startDateTime.getTime();
@@ -964,6 +1101,7 @@ export default function AranetUnifiedDashboard() {
             dayReadings.forEach((r) => {
               computedReadings.push({
                 ...r,
+                rawScaleWeight: r.value,
                 value: r.value - baseline // cumulative weight gain relative to midnight
               });
             });
@@ -1082,18 +1220,7 @@ export default function AranetUnifiedDashboard() {
             const valData = await valRes.json();
             series = valData.data || [];
             privaCacheRef.current[cacheKey] = series;
-            try {
-              // Clear older query caches from sessionStorage to free up space
-              for (let i = sessionStorage.length - 1; i >= 0; i--) {
-                const k = sessionStorage.key(i);
-                if (k && k.startsWith("priva_query_cache_")) {
-                  sessionStorage.removeItem(k);
-                }
-              }
-              sessionStorage.setItem("priva_query_cache_" + cacheKey, JSON.stringify(series));
-            } catch (e) {
-              console.warn("Failed to write sessionStorage query cache (quota limit):", e);
-            }
+            safeSetSessionStorage("priva_query_cache_" + cacheKey, JSON.stringify(series));
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -1140,6 +1267,7 @@ export default function AranetUnifiedDashboard() {
   // Debounce ref to deduplicate rapid multiple fetches on state change
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const privaCacheRef = useRef<Record<string, any>>({});
+  const aranetCacheRef = useRef<Record<string, any>>({});
   const privaLockoutExpiryRef = useRef<number>(0);
 
   // Re-fetch when selections, configurations, or date range changes (debounced by 300ms)
@@ -1183,7 +1311,23 @@ export default function AranetUnifiedDashboard() {
   const chartData = useMemo(() => {
     if (Object.keys(rawDataMap).length === 0) return [];
 
-    const step = 1; // Precision de 1 minute pour le maximum de details
+    // Dynamically adjust step (in minutes) based on requested date range or use selected override to optimize Recharts rendering
+    let step = 5; 
+    if (timeStep !== "auto") {
+      step = Number(timeStep);
+    } else {
+      if (apiDaysRequested > 14) {
+        step = 60; // 1 hour step
+      } else if (apiDaysRequested > 7) {
+        step = 30; // 30 min step
+      } else if (apiDaysRequested > 3) {
+        step = 15; // 15 min step
+      } else if (apiDaysRequested > 1) {
+        step = 10; // 10 min step
+      } else {
+        step = 5;  // 5 min step (maximum detail for single day)
+      }
+    }
 
     // Apply smoothing if enabled for each sensor
     const smoothedDataMap: { [key: string]: { readings: any[], rawValues: number[] } } = {};
@@ -1203,7 +1347,9 @@ export default function AranetUnifiedDashboard() {
 
       const rawValues = readings.map((r: any) => {
         if (key === "plant_weight_gain") {
-          return (r.value / plantsOnScale) * densityPerM2;
+          const divisor = (plantsOnScale && plantsOnScale > 0) ? plantsOnScale : 6;
+          const multiplier = (densityPerM2 && densityPerM2 > 0) ? densityPerM2 : 2.5;
+          return (r.value / divisor) * multiplier;
         }
         return r.value;
       });
@@ -1252,6 +1398,9 @@ export default function AranetUnifiedDashboard() {
         }
         bins[timeMs][key] = r.value;
         bins[timeMs][`${key}_raw`] = entry.rawValues[idx];
+        if (key === "plant_weight_gain" && r.rawScaleWeight !== undefined) {
+          bins[timeMs]["rawScaleWeight"] = r.rawScaleWeight;
+        }
       });
     });
 
@@ -1261,7 +1410,7 @@ export default function AranetUnifiedDashboard() {
     const dailyRowsMap: { [dateStr: string]: any[] } = {};
     sortedRows.forEach(row => {
       const d = new Date(row.time);
-      const dateStr = d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const dateStr = getStableDateStr(d);
       if (!dailyRowsMap[dateStr]) dailyRowsMap[dateStr] = [];
       dailyRowsMap[dateStr].push(row);
     });
@@ -1271,21 +1420,34 @@ export default function AranetUnifiedDashboard() {
       const dayRows = dailyRowsMap[dateStr];
       const eventType = dailyEvents[dateStr] || "none";
       
-      if (eventType === "harvest" || eventType === "thinning") {
+      if (eventType === "harvest" || eventType === "thinning" || eventType === "descent") {
         let dropTimeMs = 0;
         let maxDropKg = 0;
         
-        // Locate the timestamp and size of the largest drop
-        for (let i = 1; i < dayRows.length; i++) {
-          const prevVal = Number(dayRows[i - 1]["plant_weight_gain"]);
-          const currVal = Number(dayRows[i]["plant_weight_gain"]);
-          if (!isNaN(prevVal) && !isNaN(currVal)) {
-            const diff = currVal - prevVal;
-            if (diff < -0.015) { // drop of > 15 g/m²
-              const absDiff = Math.abs(diff);
-              if (absDiff > maxDropKg) {
-                maxDropKg = absDiff;
-                dropTimeMs = dayRows[i].time;
+        const manualDrop = manualDrops[dateStr];
+        if (manualDrop) {
+          const parts = dateStr.split("/");
+          const dayP = Number(parts[0]);
+          const monthP = Number(parts[1]) - 1;
+          const yearP = Number(parts[2]);
+          const timeParts = manualDrop.suddenDropTime.split(":");
+          const hourP = Number(timeParts[0] || 12);
+          const minP = Number(timeParts[1] || 0);
+          const dropDate = new Date(yearP, monthP, dayP, hourP, minP);
+          dropTimeMs = dropDate.getTime();
+        } else {
+          // Locate the timestamp and size of the largest drop
+          for (let i = 1; i < dayRows.length; i++) {
+            const prevVal = Number(dayRows[i - 1]["plant_weight_gain"]);
+            const currVal = Number(dayRows[i]["plant_weight_gain"]);
+            if (!isNaN(prevVal) && !isNaN(currVal)) {
+              const diff = currVal - prevVal;
+              if (diff < -0.015) { // drop of > 15 g/m²
+                const absDiff = Math.abs(diff);
+                if (absDiff > maxDropKg) {
+                  maxDropKg = absDiff;
+                  dropTimeMs = dayRows[i].time;
+                }
               }
             }
           }
@@ -1294,7 +1456,10 @@ export default function AranetUnifiedDashboard() {
         // Add back the adjusted value to all values from the drop moment until midnight
         if (dropTimeMs > 0) {
           const savedAdj = dailyAdjustedWeights[dateStr];
-          const adjKg = (savedAdj !== undefined && !isNaN(savedAdj)) ? (savedAdj / 1000.0) : maxDropKg;
+          const savedAdjNum = Number(savedAdj);
+          const adjKg = (savedAdj !== undefined && !isNaN(savedAdjNum)) 
+            ? (savedAdjNum / 1000.0) 
+            : (isNaN(maxDropKg) ? 0 : maxDropKg);
           
           for (let i = 0; i < dayRows.length; i++) {
             if (dayRows[i].time >= dropTimeMs && dayRows[i]["plant_weight_gain"] !== undefined) {
@@ -1306,7 +1471,7 @@ export default function AranetUnifiedDashboard() {
     });
 
     return sortedRows;
-  }, [rawDataMap, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, apiDaysRequested, zoomTimeRange, dailyEvents, dailyAdjustedWeights]);
+  }, [rawDataMap, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, apiDaysRequested, zoomTimeRange, dailyEvents, dailyAdjustedWeights, timeStep, manualDrops]);
 
   // Dynamic Advanced Agronomic analysis based on mapped chart data to calculate loss of cumulative gain
   const dynamicAgronomicData = useMemo(() => {
@@ -1316,7 +1481,7 @@ export default function AranetUnifiedDashboard() {
     const daysMap: { [dateStr: string]: any[] } = {};
     chartData.forEach(row => {
       const d = new Date(row.time);
-      const dateStr = d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const dateStr = getStableDateStr(d);
       if (!daysMap[dateStr]) daysMap[dateStr] = [];
       daysMap[dateStr].push(row);
     });
@@ -1340,6 +1505,13 @@ export default function AranetUnifiedDashboard() {
         const valid = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key])).map(r => r[key]);
         if (valid.length === 0) return null;
         return Math.max(...valid);
+      };
+
+      const getLast = (key: string) => {
+        const valid = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(r[key]));
+        if (valid.length === 0) return null;
+        const sorted = [...valid].sort((a, b) => a.time - b.time);
+        return sorted[sorted.length - 1][key];
       };
 
       const getStatsForTimeRange = (key: string, startHour: number, endHour: number) => {
@@ -1582,6 +1754,8 @@ export default function AranetUnifiedDashboard() {
       // Look up selected radiation sum key dynamically (in J/cm²)
       const radSumKey = selectedKeys.find(key => {
         const config = metricConfigs[key];
+        if (config?.agroRole === "radiation_sum") return true;
+
         const unit = config?.unit || "";
         const m = allMetrics.find(item => item.key === key);
         return (
@@ -1593,9 +1767,9 @@ export default function AranetUnifiedDashboard() {
         );
       });
 
-      const maxVal = radSumKey ? getMax(radSumKey) : null;
-      // Daily radiation sum value directly from the chart (max value of the accumulation)
-      const radiationSumJcm2 = maxVal !== null ? Math.round(maxVal) : null;
+      const lastVal = radSumKey ? getLast(radSumKey) : null;
+      // Daily radiation sum value directly from the chart (last value of the accumulation)
+      const radiationSumJcm2 = lastVal !== null ? Math.round(lastVal) : null;
 
       // Yield potential under optimal conditions (g/m²)
       const yieldPotentialGrams = radiationSumJcm2 !== null ? Number((radiationSumJcm2 * (conversionRatio / 100.0)).toFixed(1)) : null;
@@ -1607,38 +1781,93 @@ export default function AranetUnifiedDashboard() {
       const weightKeys = selectedKeys.filter(k => k === "plant_weight_gain");
       let actualGain = 0;
       let suddenDropTime: string | null = null;
+      let suddenDropTs: number | null = null;
       let suddenDropVal = 0;
+      let suggestedCorrectionGrams = 0;
 
-      if (weightKeys.length > 0) {
-        const key = weightKeys[0];
-        const rawKey = `${key}_raw`;
+      const manualDropForDay = manualDrops[dateStr];
+
+      if (manualDropForDay) {
+        suddenDropVal = manualDropForDay.suddenDropVal;
+        suggestedCorrectionGrams = manualDropForDay.suggestedCorrectionGrams;
+        suddenDropTime = manualDropForDay.suddenDropTime;
         
-        // 1. Detect drop using raw values (which retain the sudden weight drops)
-        const rawReadings = rows.filter(r => r[rawKey] !== undefined && r[rawKey] !== null && !isNaN(Number(r[rawKey])));
+        const parts = dateStr.split("/");
+        const dayP = Number(parts[0]);
+        const monthP = Number(parts[1]) - 1;
+        const yearP = Number(parts[2]);
+        const timeParts = suddenDropTime.split(":");
+        const hourP = Number(timeParts[0] || 12);
+        const minP = Number(timeParts[1] || 0);
+        const dropDate = new Date(yearP, monthP, dayP, hourP, minP);
+        suddenDropTs = dropDate.getTime();
+      } else if (weightKeys.length > 0) {
+        const key = weightKeys[0];
+        const divisor = (plantsOnScale && plantsOnScale > 0) ? plantsOnScale : 6;
+        const multiplier = (densityPerM2 && densityPerM2 > 0) ? densityPerM2 : 2.5;
+        
+        // Filter rows that have rawScaleWeight
+        const rawReadings = rows.filter(r => r.rawScaleWeight !== undefined && r.rawScaleWeight !== null && !isNaN(Number(r.rawScaleWeight)));
+        
         if (rawReadings.length > 0) {
-          rawReadings.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+          rawReadings.sort((a, b) => a.time - b.time);
           
           for (let i = 1; i < rawReadings.length; i++) {
-            const prev = Number(rawReadings[i - 1][rawKey]);
-            const curr = Number(rawReadings[i][rawKey]);
-            if (!isNaN(prev) && !isNaN(curr)) {
-              const stepDiff = curr - prev; // in kg/m²
-              if (stepDiff < -0.015) { // Drop of > 15 g/m² in a single interval
-                const dropG = Math.abs(stepDiff) * 1000;
-                if (dropG > suddenDropVal) {
-                  suddenDropVal = dropG;
-                  const dateObj = new Date(rawReadings[i].time);
-                  suddenDropTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const prevScale = Number(rawReadings[i - 1].rawScaleWeight);
+            const currScale = Number(rawReadings[i].rawScaleWeight);
+            
+            if (!isNaN(prevScale) && !isNaN(currScale) && prevScale > 0) {
+              const scaleDropAbs = prevScale - currScale;
+              
+              // Drop of at least 15 grams on the scale (0.015 kg)
+              if (scaleDropAbs >= 0.015) {
+                const dropTime = rawReadings[i].time;
+                
+                // Check if NOT compensated in the next 30 minutes
+                const thirtyMinsLater = dropTime + 30 * 60 * 1000;
+                const postReadings = rawReadings.filter(r => r.time > dropTime && r.time <= thirtyMinsLater);
+                
+                // If weight doesn't recover to within 5 grams of prevScale, it is non-compensated
+                const threshold = prevScale - 0.005;
+                const isCompensated = postReadings.some(r => Number(r.rawScaleWeight) >= threshold);
+                
+                if (!isCompensated) {
+                  // Compute delta: (average of 15 points of cumulative gain before) - (average of 15 points of cumulative gain after)
+                  const prePoints = rawReadings.filter(r => r.time < dropTime).slice(-15);
+                  const postPoints = rawReadings.filter(r => r.time >= dropTime).slice(0, 15);
+                  
+                  let deltaGramsPerM2 = 0;
+                  const rawKey = `${key}_raw`;
+                  if (prePoints.length > 0 && postPoints.length > 0) {
+                    const avgPre = prePoints.reduce((sum, r) => sum + Number(r[rawKey]), 0) / prePoints.length;
+                    const avgPost = postPoints.reduce((sum, r) => sum + Number(r[rawKey]), 0) / postPoints.length;
+                    const deltaScaleKg = avgPre - avgPost; // Difference in kg/m² of raw cumulative gain
+                    deltaGramsPerM2 = deltaScaleKg * 1000; // Convert to g/m²
+                  } else {
+                    const prevVal = Number(rawReadings[i - 1][rawKey]);
+                    const currVal = Number(rawReadings[i][rawKey]);
+                    deltaGramsPerM2 = (prevVal - currVal) * 1000;
+                  }
+                  
+                  const dropGramsPerM2 = ((prevScale - currScale) / divisor) * multiplier * 1000;
+                  
+                  if (dropGramsPerM2 > suddenDropVal) {
+                    suddenDropVal = Math.round(dropGramsPerM2);
+                    suggestedCorrectionGrams = Math.max(0, Math.round(deltaGramsPerM2));
+                    const dateObj = new Date(dropTime);
+                    suddenDropTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    suddenDropTs = dropTime;
+                  }
                 }
               }
             }
           }
         }
 
-        // 2. Calculate actual daily gain using the corrected/smoothed curve values
+        // Calculate actual daily gain using the corrected/smoothed curve values
         const dayReadings = rows.filter(r => r[key] !== undefined && r[key] !== null && !isNaN(Number(r[key])));
         if (dayReadings.length > 0) {
-          dayReadings.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+          dayReadings.sort((a, b) => a.time - b.time);
           const firstVal = Number(dayReadings[0][key]);
           const lastVal = Number(dayReadings[dayReadings.length - 1][key]);
           if (!isNaN(firstVal) && !isNaN(lastVal)) {
@@ -1666,7 +1895,9 @@ export default function AranetUnifiedDashboard() {
         potentialGain: lostGainGrams,
         actualGain: Number(actualGain.toFixed(1)),
         suddenDropTime,
-        suddenDropVal: Number(suddenDropVal.toFixed(1)),
+        suddenDropTs,
+        suddenDropVal: isNaN(suddenDropVal) ? 0 : Number(suddenDropVal.toFixed(1)),
+        suggestedCorrectionGrams: isNaN(suggestedCorrectionGrams) ? 0 : Math.round(suggestedCorrectionGrams),
         radiationSumJcm2,
         yieldPotentialGrams,
         lostPercent,
@@ -1675,7 +1906,7 @@ export default function AranetUnifiedDashboard() {
         actionPlan: actionPlans
       };
     });
-  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, conversionRatio, dailyEvents]);
+  }, [chartData, selectedKeys, metricConfigs, plantsOnScale, densityPerM2, conversionRatio, dailyEvents, manualDrops]);
 
   const brushIndices = useMemo(() => {
     if (!zoomTimeRange || chartData.length === 0) {
@@ -1998,6 +2229,19 @@ export default function AranetUnifiedDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Agronomic Mapping Role Selector */}
+            <div className="flex items-center justify-between border-t pt-1.5 border-muted/20 gap-2">
+              <span className="text-[8px] text-muted-foreground uppercase font-black">Rôle Agronomique</span>
+              <select
+                value={config.agroRole || "none"}
+                onChange={(e) => updateMetricConfig(m.key, "agroRole", e.target.value)}
+                className="text-[9px] border rounded bg-background p-0.5 focus:outline-none focus:ring-1 focus:ring-primary h-5 cursor-pointer max-w-[130px] font-bold text-foreground"
+              >
+                <option value="none">Aucun (Auto)</option>
+                <option value="radiation_sum">Somme de radiation</option>
+              </select>
+            </div>
           </div>
         )}
       </div>
@@ -2061,52 +2305,63 @@ export default function AranetUnifiedDashboard() {
           </Link>
           <span className="text-xs text-muted-foreground">/</span>
           
-          {/* Tabs for switching views */}
-          <div className="flex items-center gap-1 bg-muted p-0.5 rounded-xl border">
-            <button
-              onClick={() => setActiveTab("agronomic")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTab === "agronomic"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground animate-in duration-200"
-              }`}
-            >
-              Analyseur Agronomique
-            </button>
-            <button
-              onClick={() => setActiveTab("selection")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTab === "selection"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground animate-in duration-200"
-              }`}
-            >
-              Sélection des données
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("charts");
-                setStartDate(getPastDateStr(2));
-                setEndDate(getPastDateStr(1));
-              }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTab === "charts"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground animate-in duration-200"
-              }`}
-            >
-              Graphique
-            </button>
-            <button
-              onClick={() => setActiveTab("climatique")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTab === "climatique"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground animate-in duration-200"
-              }`}
-            >
-              Ordinateur Climatique
-            </button>
+          {/* Main Navigation tabs grouped in separate boxes (encadrés) */}
+          <div className="flex items-center gap-3">
+            {/* Box 1: Analyseur Agronomique */}
+            <div className="flex items-center bg-muted p-0.5 rounded-xl border">
+              <button
+                onClick={() => setActiveTab("agronomic")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === "agronomic"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Analyseur Agronomique
+              </button>
+            </div>
+
+            {/* Box 2: Climat/Croissance (Alone in a box) */}
+            <div className="flex items-center bg-muted p-0.5 rounded-xl border">
+              <button
+                onClick={() => {
+                  setActiveTab("charts");
+                  setStartDate(getPastDateStr(2));
+                  setEndDate(getPastDateStr(1));
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === "charts"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground animate-in duration-200"
+                }`}
+              >
+                Climat/Croissance
+              </button>
+            </div>
+
+            {/* Box 3: Sélection des données & Ordinateur Climatique (Together in a box) */}
+            <div className="flex items-center bg-muted p-0.5 rounded-xl border">
+              <button
+                onClick={() => setActiveTab("selection")}
+                className={`px-3.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === "selection"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Sélection des données
+              </button>
+              <button
+                onClick={() => setActiveTab("climatique")}
+                className={`px-3.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === "climatique"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Ordinateur Climatique
+              </button>
+            </div>
           </div>
 
           {/* Compartment Selection Dropdown */}
@@ -2171,20 +2426,38 @@ export default function AranetUnifiedDashboard() {
                         <ChartIcon className="h-4.5 w-4.5 text-primary" /> Période d&apos;Analyse (Max. 30 jours)
                       </h2>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => handleStartDateChange(e.target.value)}
-                        className="border rounded-xl px-2.5 py-1 text-xs font-bold bg-background focus:outline-none focus:ring-1 focus:ring-primary h-8"
-                      />
-                      <span className="text-xs text-muted-foreground font-bold">à</span>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => handleEndDateChange(e.target.value)}
-                        className="border rounded-xl px-2.5 py-1 text-xs font-bold bg-background focus:outline-none focus:ring-1 focus:ring-primary h-8"
-                      />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => handleStartDateChange(e.target.value)}
+                          className="border rounded-xl px-2.5 py-1 text-xs font-bold bg-background focus:outline-none focus:ring-1 focus:ring-primary h-8"
+                        />
+                        <span className="text-xs text-muted-foreground font-bold">à</span>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => handleEndDateChange(e.target.value)}
+                          className="border rounded-xl px-2.5 py-1 text-xs font-bold bg-background focus:outline-none focus:ring-1 focus:ring-primary h-8"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 border-l pl-3 border-muted/50">
+                        <span className="text-[10px] text-slate-500 uppercase font-black">Intervalle :</span>
+                        <select
+                          value={timeStep}
+                          onChange={(e) => setTimeStep(e.target.value)}
+                          className="border rounded-xl px-2 py-1 text-xs font-bold bg-background focus:outline-none focus:ring-1 focus:ring-primary h-8 cursor-pointer"
+                        >
+                          <option value="auto">Auto (Dynamique)</option>
+                          <option value="1">1 minute</option>
+                          <option value="2">2 minutes</option>
+                          <option value="5">5 minutes</option>
+                          <option value="15">15 minutes</option>
+                          <option value="30">30 minutes</option>
+                          <option value="60">1 heure</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -2263,6 +2536,138 @@ export default function AranetUnifiedDashboard() {
                         )}
                       </CardHeader>
                       <CardContent className="p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+                        {/* Interactive Drop Validation Alert */}
+                        {(() => {
+                          const unvalidated = dynamicAgronomicData.filter(
+                            (d: any) => d.suddenDropVal > 0 && (!dailyEvents[d.dateStr] || dailyEvents[d.dateStr] === "none")
+                          );
+                          if (unvalidated.length === 0) return null;
+                          return (
+                            <div className="mb-4 bg-amber-500/10 border border-amber-500/20 p-3 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm shrink-0">
+                              <div className="flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-400 font-bold">
+                                <AlertTriangle className="h-4.5 w-4.5 text-amber-500 shrink-0 animate-bounce" />
+                                <div>
+                                  <span>{unvalidated.length} chute(s) brute(s) du poids de plante détectée(s) et non validée(s).</span>
+                                  <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">Le gain cumulé doit être lissé pour ignorer ces incidents.</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {unvalidated.map((d: any) => (
+                                  <button
+                                    key={`btn-val-${d.dateStr}`}
+                                    onClick={() => setValidatingDropDate(d.dateStr)}
+                                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors cursor-pointer"
+                                  >
+                                    Corriger {d.dateStr}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Interactive Validation Modal (Petite fenêtre) */}
+                        {validatingDropDate && (() => {
+                          const d = dynamicAgronomicData.find((item: any) => item.dateStr === validatingDropDate);
+                          if (!d) return null;
+                          const normDate = normalizeDateKey(validatingDropDate);
+                          const currentType = dailyEventsDraft[normDate] || "none";
+                          const currentVal = dailyAdjustedWeightsDraft[normDate] !== undefined 
+                            ? dailyAdjustedWeightsDraft[normDate] 
+                            : d.suggestedCorrectionGrams;
+
+                          const handleSave = () => {
+                            setDailyEvents(prev => {
+                              const updated = { ...prev, [normDate]: currentType as any };
+                              localStorage.setItem("aranet_daily_events", JSON.stringify(updated));
+                              return updated;
+                            });
+                            setDailyEventsDraft(prev => ({
+                              ...prev,
+                              [normDate]: currentType as any
+                            }));
+                            setDailyAdjustedWeights(prev => {
+                              const updated = { ...prev, [normDate]: currentVal };
+                              localStorage.setItem("aranet_daily_adjusted_weights", JSON.stringify(updated));
+                              return updated;
+                            });
+                            setDailyAdjustedWeightsDraft(prev => ({
+                              ...prev,
+                              [normDate]: currentVal
+                            }));
+                            setValidatingDropDate(null);
+                          };
+
+                          return (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                              <Card className="w-full max-w-sm border shadow-2xl bg-background rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200">
+                                <CardHeader className="p-5 border-b bg-muted/20">
+                                  <CardTitle className="text-xs font-black uppercase tracking-wider text-amber-600 flex items-center gap-2">
+                                    <Sliders className="h-4.5 w-4.5" /> Validation Chute Brute - {validatingDropDate}
+                                  </CardTitle>
+                                  <CardDescription className="text-[10px] font-bold">
+                                    Chute de {d.suddenDropVal} g/m² détectée à {d.suddenDropTime}.
+                                  </CardDescription>
+                                </CardHeader>
+                                <CardContent className="p-5 space-y-4">
+                                  <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] text-muted-foreground uppercase font-black">Nature de la chute</label>
+                                    <select
+                                      value={currentType}
+                                      onChange={(e) => setDailyEventsDraft(prev => ({ ...prev, [validatingDropDate]: e.target.value as any }))}
+                                      className="w-full border rounded-xl p-2 bg-background text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer h-9"
+                                    >
+                                      <option value="none">Aucun (Laisser brute)</option>
+                                      <option value="harvest">Récolte</option>
+                                      <option value="thinning">Effeuillage</option>
+                                      <option value="descent">Descente</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-[10px] text-muted-foreground uppercase font-black">Delta à compenser (Lissage)</label>
+                                      <span className="text-[9px] text-emerald-600 font-bold">Suggéré : {d.suggestedCorrectionGrams} g/m²</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 border rounded-xl px-3 bg-background h-9 shadow-sm">
+                                      <input
+                                        type="number"
+                                        value={currentVal}
+                                        onChange={(e) => setDailyAdjustedWeightsDraft(prev => ({ 
+                                          ...prev, 
+                                          [validatingDropDate]: Math.max(0, parseFloat(e.target.value) || 0) 
+                                        }))}
+                                        className="w-full bg-transparent text-left font-mono font-black text-xs focus:outline-none"
+                                      />
+                                      <span className="text-[10px] font-black text-muted-foreground uppercase shrink-0">g/m²</span>
+                                    </div>
+                                    <p className="text-[9px] text-muted-foreground mt-0.5 leading-snug">
+                                      Calculé par la moyenne des 15 points avant moins la moyenne des 15 points après la chute.
+                                    </p>
+                                  </div>
+                                </CardContent>
+                                <CardFooter className="p-5 border-t bg-muted/5 flex items-center justify-end gap-2.5">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setValidatingDropDate(null)}
+                                    className="font-bold text-xs uppercase h-9 rounded-xl"
+                                  >
+                                    Fermer
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={handleSave}
+                                    className="font-black text-xs uppercase h-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm px-4"
+                                  >
+                                    Valider et Lisser
+                                  </Button>
+                                </CardFooter>
+                              </Card>
+                            </div>
+                          );
+                        })()}
+
                         {privaChartError && (
                           <div className={`border p-2.5 rounded-xl text-[10px] font-bold flex items-center gap-2 mb-2 shrink-0 ${
                             privaChartError.startsWith("Info")
@@ -2314,36 +2719,25 @@ export default function AranetUnifiedDashboard() {
 
                                   {/* Weight drop annotations */}
                                   {showAnnotations && dynamicAgronomicData.map(d => {
-                                    if (!d.suddenDropTime || d.suddenDropVal <= 0) return null;
+                                    if (!d.suddenDropTs || d.suddenDropVal <= 0) return null;
                                     
-                                    const parts = d.dateStr.split("/");
-                                    if (parts.length !== 3) return null;
-                                    const dayP = Number(parts[0]);
-                                    const monthP = Number(parts[1]) - 1;
-                                    const yearP = Number(parts[2]);
-                                    
-                                    const timeParts = d.suddenDropTime.split(":");
-                                    if (timeParts.length < 2) return null;
-                                    const hourP = Number(timeParts[0]);
-                                    const minP = Number(timeParts[1]);
-                                    
-                                    const dropDate = new Date(yearP, monthP, dayP, hourP, minP);
-                                    const dropTs = dropDate.getTime();
-                                    if (isNaN(dropTs)) return null;
-
                                     const eventType = dailyEvents[d.dateStr] || "none";
+                                    const compensationVal = dailyAdjustedWeights[d.dateStr] !== undefined 
+                                       ? dailyAdjustedWeights[d.dateStr] 
+                                       : d.suggestedCorrectionGrams;
                                     const labelText = eventType === "harvest" 
-                                      ? `🍇 Récolte : -${d.suddenDropVal} g/m²` 
-                                      : eventType === "thinning" 
-                                        ? `🍃 Effeuillage : -${d.suddenDropVal} g/m²` 
-                                        : `⚠️ Chute brute : -${d.suddenDropVal} g/m²`;
-                                    
+                                       ? `Récolte : -${compensationVal} g/m²` 
+                                       : eventType === "thinning" 
+                                         ? `Effeuillage : -${compensationVal} g/m²` 
+                                         : eventType === "descent"
+                                           ? `Descente : -${compensationVal} g/m²`
+                                           : `⚠️ Chute brute : -${d.suddenDropVal} g/m²`;
                                     const strokeColor = eventType === "none" ? "#f43f5e" : "#10b981";
 
                                     return (
                                       <ReferenceLine
                                         key={`drop-ann-${d.day}`}
-                                        x={dropTs}
+                                        x={d.suddenDropTs}
                                         stroke={strokeColor}
                                         strokeDasharray="4 4"
                                         strokeWidth={1.5}
@@ -2571,12 +2965,61 @@ export default function AranetUnifiedDashboard() {
                         </div>
                       </div>
 
+                      <div className="border-t pt-3 space-y-3 bg-muted/5 p-3 rounded-xl border border-muted/20">
+                        <h4 className="text-[10px] font-black uppercase text-slate-600 tracking-wider flex items-center gap-1.5">
+                          <Activity className="h-3.5 w-3.5" /> Déclarer manuellement une chute brute
+                        </h4>
+                        <div className="flex flex-wrap items-end gap-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase">Date</span>
+                            <select
+                              value={newManualDropDate}
+                              onChange={(e) => setNewManualDropDate(e.target.value)}
+                              className="bg-background border rounded-lg px-2.5 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary h-8 cursor-pointer min-w-[130px]"
+                            >
+                              <option value="">Sélectionner...</option>
+                              {dynamicAgronomicData.map(d => (
+                                <option key={d.dateStr} value={d.dateStr}>{d.dateStr}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase">Heure</span>
+                            <input
+                              type="text"
+                              value={newManualDropTime}
+                              onChange={(e) => setNewManualDropTime(e.target.value)}
+                              placeholder="12:00"
+                              className="bg-background border rounded-lg px-2.5 py-1 text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-primary h-8 w-20 text-center"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase">Taille (g/m²)</span>
+                            <input
+                              type="number"
+                              value={newManualDropVal}
+                              onChange={(e) => setNewManualDropVal(e.target.value)}
+                              placeholder="100"
+                              className="bg-background border rounded-lg px-2.5 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary h-8 w-24 text-center font-mono"
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            disabled={!newManualDropDate}
+                            onClick={handleAddManualDrop}
+                            className="bg-primary hover:bg-primary/90 text-white font-black text-[10px] uppercase px-4 h-8 rounded-lg shadow-sm shrink-0"
+                          >
+                            Ajouter
+                          </Button>
+                        </div>
+                      </div>
+
                       {showAnnotations && (() => {
                         const drops = dynamicAgronomicData.filter(d => d.suddenDropVal > 0);
                         if (drops.length === 0) {
                           return (
                             <div className="text-[10px] text-muted-foreground font-semibold border-t pt-2">
-                              Aucune baisse de poids brutale de biomasse n&apos;a été détectée sur la période sélectionnée.
+                              Aucune baisse de poids brutale de biomasse n&apos;a été détectée.
                             </div>
                           );
                         }
@@ -2591,13 +3034,13 @@ export default function AranetUnifiedDashboard() {
                                 const eventVal = dailyEventsDraft[d.dateStr] || "none";
                                 const adjVal = dailyAdjustedWeightsDraft[d.dateStr] !== undefined 
                                   ? dailyAdjustedWeightsDraft[d.dateStr] 
-                                  : d.suddenDropVal;
+                                  : d.suggestedCorrectionGrams;
                                 
                                 return (
                                   <div key={d.day} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-muted/20 border border-border/50">
                                     <div className="flex flex-col gap-0.5">
                                       <span className="text-[10px] font-black text-foreground">{d.dateStr} à {d.suddenDropTime}</span>
-                                      <span className="text-[9px] text-muted-foreground font-semibold">Brute détectée : -{d.suddenDropVal} g/m²</span>
+                                      <span className="text-[9px] text-muted-foreground font-semibold">Brute : -{d.suddenDropVal} g/m² (Delta suggéré : {d.suggestedCorrectionGrams} g/m²)</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {/* Dropdown Nature */}
@@ -2609,6 +3052,7 @@ export default function AranetUnifiedDashboard() {
                                         <option value="none">Aucun</option>
                                         <option value="harvest">Récolte</option>
                                         <option value="thinning">Effeuillage</option>
+                                        <option value="descent">Descente</option>
                                       </select>
 
                                       {/* Adjusted Loss Input */}
@@ -2624,6 +3068,43 @@ export default function AranetUnifiedDashboard() {
                                         />
                                         <span className="text-[9px] font-bold text-muted-foreground uppercase">g/m²</span>
                                       </div>
+
+                                      {manualDrops[d.dateStr] && (
+                                        <button
+                                          onClick={() => {
+                                            setManualDrops(prev => {
+                                              const copy = { ...prev };
+                                              delete copy[d.dateStr];
+                                              localStorage.setItem("aranet_manual_drops", JSON.stringify(copy));
+                                              return copy;
+                                            });
+                                            setDailyEventsDraft(prev => {
+                                              const copy = { ...prev };
+                                              delete copy[d.dateStr];
+                                              return copy;
+                                            });
+                                            setDailyAdjustedWeightsDraft(prev => {
+                                              const copy = { ...prev };
+                                              delete copy[d.dateStr];
+                                              return copy;
+                                            });
+                                            setDailyEvents(prev => {
+                                              const copy = { ...prev };
+                                              delete copy[d.dateStr];
+                                              return copy;
+                                            });
+                                            setDailyAdjustedWeights(prev => {
+                                              const copy = { ...prev };
+                                              delete copy[d.dateStr];
+                                              return copy;
+                                            });
+                                          }}
+                                          className="p-1 hover:text-rose-500 text-muted-foreground transition-colors cursor-pointer text-xs"
+                                          title="Supprimer la chute manuelle"
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -3268,7 +3749,7 @@ export default function AranetUnifiedDashboard() {
                             {dynamicAgronomicData.map(d => {
                               const isActive = d.day === selectedDayNum || (selectedDayNum > dynamicAgronomicData.length && d.day === 1);
                               
-                              const handleEventChange = (value: "none" | "harvest" | "thinning") => {
+                              const handleEventChange = (value: "none" | "harvest" | "thinning" | "descent") => {
                                 setDailyEventsDraft(prev => ({
                                   ...prev,
                                   [d.dateStr]: value
@@ -3327,18 +3808,19 @@ export default function AranetUnifiedDashboard() {
                                         <option value="none">Aucun</option>
                                         <option value="harvest">Récolte</option>
                                         <option value="thinning">Effeuillage</option>
+                                        <option value="descent">Descente</option>
                                       </select>
 
-                                      {(eventValue === "harvest" || eventValue === "thinning") && (
-                                        <div className="flex items-center gap-1 bg-background border rounded-lg px-1.5 py-0.5 shadow-sm w-20">
+                                      {(eventValue === "harvest" || eventValue === "thinning" || eventValue === "descent") && (
+                                        <div className="flex items-center gap-1 bg-background border rounded-lg px-1.5 py-0.5 shadow-sm w-24">
                                           <input
                                             type="number"
-                                            value={dailyAdjustedWeightsDraft[d.dateStr] !== undefined ? dailyAdjustedWeightsDraft[d.dateStr] : d.suddenDropVal}
+                                            value={dailyAdjustedWeightsDraft[d.dateStr] !== undefined ? dailyAdjustedWeightsDraft[d.dateStr] : d.suggestedCorrectionGrams}
                                             onChange={(e) => setDailyAdjustedWeightsDraft(prev => ({ 
                                               ...prev, 
                                               [d.dateStr]: Math.max(0, parseFloat(e.target.value) || 0) 
                                             }))}
-                                            className="w-10 bg-transparent text-center font-mono font-bold text-[10px] focus:outline-none"
+                                            className="w-12 bg-transparent text-center font-mono font-bold text-[10px] focus:outline-none"
                                             title="Poids estimatif de la perte"
                                           />
                                           <span className="text-[8px] font-bold text-muted-foreground uppercase">g</span>

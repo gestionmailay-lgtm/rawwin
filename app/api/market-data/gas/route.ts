@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Simple in-memory cache helper for Gas Market Data
+interface MarketCacheEntry {
+  data: any;
+  expiry: number;
+}
+let cachedMarketData: MarketCacheEntry | null = null;
+
 export async function GET() {
     try {
+        if (cachedMarketData && Date.now() < cachedMarketData.expiry) {
+            return NextResponse.json(cachedMarketData.data);
+        }
+
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
         const supabase = createClient(supabaseUrl, supabaseKey);
@@ -22,6 +33,11 @@ export async function GET() {
             });
         }
         
+        cachedMarketData = {
+            data: data.data,
+            expiry: Date.now() + 300 * 1000 // 5 minutes cache
+        };
+
         return NextResponse.json(data.data);
     } catch (error: any) {
         console.error("Erreur lecture marché Supabase:", error);
