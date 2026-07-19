@@ -2772,12 +2772,16 @@ export default function AranetUnifiedDashboard() {
                                     const isShared = yAxis.keys.length > 1;
                                     const axisColor = isShared ? "#64748b" : yAxis.color;
                                     
-                                    const domainMin = yAxis.axis === "left" 
-                                      ? (yLeftMin !== "" ? Number(yLeftMin) : "auto") 
-                                      : (yRightMin !== "" ? Number(yRightMin) : "auto");
-                                    const domainMax = yAxis.axis === "left" 
-                                      ? (yLeftMax !== "" ? Number(yLeftMax) : "auto") 
-                                      : (yRightMax !== "" ? Number(yRightMax) : "auto");
+                                    const parsedLeftMin = Number(yLeftMin);
+                                    const parsedLeftMax = Number(yLeftMax);
+                                    const parsedRightMin = Number(yRightMin);
+                                    const parsedRightMax = Number(yRightMax);
+                                    const domainMin = yAxis.axis === "left"
+                                      ? (yLeftMin !== "" && !isNaN(parsedLeftMin) ? parsedLeftMin : "auto")
+                                      : (yRightMin !== "" && !isNaN(parsedRightMin) ? parsedRightMin : "auto");
+                                    const domainMax = yAxis.axis === "left"
+                                      ? (yLeftMax !== "" && !isNaN(parsedLeftMax) ? parsedLeftMax : "auto")
+                                      : (yRightMax !== "" && !isNaN(parsedRightMax) ? parsedRightMax : "auto");
 
                                     return (
                                       <YAxis
@@ -3170,7 +3174,7 @@ export default function AranetUnifiedDashboard() {
                               type="number"
                               min="1"
                               value={plantsOnScale}
-                              onChange={(e) => setPlantsOnScale(Math.max(1, Number(e.target.value)))}
+                              onChange={(e) => setPlantsOnScale(Math.max(1, Number(e.target.value) || 1))}
                               className="w-full text-xs border rounded-xl bg-background p-2 focus:outline-none focus:ring-1 focus:ring-primary text-center font-bold"
                             />
                           </div>
@@ -3181,7 +3185,7 @@ export default function AranetUnifiedDashboard() {
                               step="0.1"
                               min="0.1"
                               value={densityPerM2}
-                              onChange={(e) => setDensityPerM2(Math.max(0.1, Number(e.target.value)))}
+                              onChange={(e) => setDensityPerM2(Math.max(0.1, Number(e.target.value) || 0.1))}
                               className="w-full text-xs border rounded-xl bg-background p-2 focus:outline-none focus:ring-1 focus:ring-primary text-center font-bold"
                             />
                           </div>
